@@ -1,0 +1,26 @@
+name: chua_aggressive
+description: Fast Chua with non-canonical alpha - denser wing-hopping, deeper wavefold, high resonance.
+tier: per_engine
+
+cores:
+  - id: chua1
+    type: chua
+    speed: 2.5
+    alpha: 18.0
+    beta: 32.0
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 2.0
+  - id: filt
+    type: svf_morph
+    cutoff: 130.0
+    resonance: 0.7
+    morph: 0.5
+
+modulation:
+  - { src: chua1.x, dst: fold.drive,    depth: 4.5, scale: linear, range: positive }
+  - { src: chua1.z, dst: filt.cutoff,   depth: 5.5, scale: exp2,   range: positive }
+  - { src: chua1.y, dst: filt.resonance, depth: 0.25, scale: linear, range: positive }
+  - { src: chua1.x, dst: filt.morph,    depth: 0.55, scale: linear, range: bipolar }

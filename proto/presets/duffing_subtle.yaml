@@ -1,0 +1,23 @@
+name: duffing_subtle
+description: Light input-coupling, gentle filter sweep. Adds subtle expressive motion that follows dynamics.
+tier: per_engine
+
+cores:
+  - id: duff
+    type: duffing
+    delta: 0.3
+    gamma: 0.15
+    omega: 1.2
+    speed: 60.0
+    input_drive: 1.5
+
+chain:
+  - id: filt
+    type: svf_morph
+    cutoff: 800.0
+    resonance: 0.2
+    morph: 0.4
+
+modulation:
+  - { src: duff.v, dst: filt.cutoff, depth: 1.8, scale: exp2,   range: bipolar }
+  - { src: duff.x, dst: filt.morph,  depth: 0.25, scale: linear, range: bipolar }

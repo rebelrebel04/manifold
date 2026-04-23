@@ -1,0 +1,26 @@
+name: aizawa_aggressive
+description: Fast Aizawa with pushed d - tighter petals, more frequent lobe transitions, deeper fold and filter sweeps.
+tier: per_engine
+
+cores:
+  - id: aiz1
+    type: aizawa
+    speed: 2.5
+    d: 4.5
+    e: 0.3
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 2.1
+  - id: filt
+    type: svf_morph
+    cutoff: 140.0
+    resonance: 0.7
+    morph: 0.5
+
+modulation:
+  - { src: aiz1.x, dst: fold.drive,    depth: 4.2, scale: linear, range: positive }
+  - { src: aiz1.z, dst: filt.cutoff,   depth: 5.2, scale: exp2,   range: positive }
+  - { src: aiz1.y, dst: filt.resonance, depth: 0.25, scale: linear, range: positive }
+  - { src: aiz1.x, dst: filt.morph,    depth: 0.55, scale: linear, range: bipolar }

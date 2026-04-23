@@ -1,0 +1,32 @@
+name: rossler_dual
+description: Two Rösslers - slow wide-c reinjections + fast tight spirals. Macro release events over micro shimmer.
+tier: combo
+
+cores:
+  - id: slow
+    type: rossler
+    speed: 0.6
+    c: 14.0
+    init: [0.1, 0.0, 0.0]
+  - id: fast
+    type: rossler
+    speed: 4.0
+    a: 0.3
+    c: 6.5
+    init: [-0.5, 0.3, 1.0]
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.8
+  - id: filt
+    type: svf_morph
+    cutoff: 150.0
+    resonance: 0.6
+    morph: 0.5
+
+modulation:
+  - { src: fast.x, dst: fold.drive,    depth: 4.0, scale: linear, range: positive }
+  - { src: slow.y, dst: filt.cutoff,   depth: 5.5, scale: exp2,   range: positive }
+  - { src: slow.z, dst: filt.resonance, depth: 0.25, scale: linear, range: positive }
+  - { src: fast.z, dst: filt.morph,    depth: 0.5, scale: linear, range: bipolar }

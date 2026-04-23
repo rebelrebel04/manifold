@@ -1,0 +1,23 @@
+name: chua_subtle
+description: Slower Chua, gentle depths. Preserves source; wing-switching hints at rhythmic accents.
+tier: per_engine
+
+cores:
+  - id: chua1
+    type: chua
+    speed: 0.5
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.1
+  - id: filt
+    type: svf_morph
+    cutoff: 500.0
+    resonance: 0.25
+    morph: 0.35
+
+modulation:
+  - { src: chua1.x, dst: fold.drive,  depth: 0.9, scale: linear, range: positive }
+  - { src: chua1.z, dst: filt.cutoff, depth: 2.0, scale: exp2,   range: bipolar }
+  - { src: chua1.x, dst: filt.morph,  depth: 0.3, scale: linear, range: bipolar }

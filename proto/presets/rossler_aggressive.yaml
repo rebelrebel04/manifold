@@ -1,0 +1,26 @@
+name: rossler_aggressive
+description: Rössler pushed hard - fast speed, high c (big z-reinjections), deep mod. Dramatic build-and-drop cycles.
+tier: per_engine
+
+cores:
+  - id: ros1
+    type: rossler
+    speed: 3.5
+    a: 0.25
+    c: 12.0
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 2.2
+  - id: filt
+    type: svf_morph
+    cutoff: 120.0
+    resonance: 0.75
+    morph: 0.5
+
+modulation:
+  - { src: ros1.x, dst: fold.drive,    depth: 5.5, scale: linear, range: positive }
+  - { src: ros1.y, dst: filt.cutoff,   depth: 6.0, scale: exp2,   range: positive }
+  - { src: ros1.z, dst: filt.resonance, depth: 0.2, scale: linear, range: positive }
+  - { src: ros1.z, dst: filt.morph,    depth: 0.5, scale: linear, range: bipolar }

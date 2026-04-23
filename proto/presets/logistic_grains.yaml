@@ -1,0 +1,30 @@
+name: logistic_grains
+description: Period-doubling logistic (r=3.53) smoothed → grain position + pitch. Structured aperiodic motion.
+tier: per_engine
+
+cores:
+  - id: lpos
+    type: logistic
+    r: 3.53
+    step_rate: 5.0
+    x0: 0.37
+    smoothing_hz: 4.0
+  - id: lpitch
+    type: logistic
+    r: 3.48
+    step_rate: 2.5
+    x0: 0.51
+    smoothing_hz: 4.0
+
+chain:
+  - id: gran
+    type: granular
+    position: 0.5
+    pitch: 1.0
+    grain_size_ms: 150.0
+    overlap: 6
+    jitter: 0.03
+
+modulation:
+  - { src: lpos.x,   dst: gran.position, depth: 0.5, scale: linear, range: positive }
+  - { src: lpitch.x, dst: gran.pitch,    depth: 0.42, scale: exp2,  range: bipolar }

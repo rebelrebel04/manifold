@@ -1,0 +1,27 @@
+name: rossler_unhinged
+description: Rössler at a=0.38 (deep period-doubling chaos) + very fast speed. Erratic bursts + sudden reinjections.
+tier: per_engine
+
+cores:
+  - id: ros1
+    type: rossler
+    speed: 5.0
+    a: 0.38
+    b: 0.3
+    c: 8.5
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 2.5
+  - id: filt
+    type: svf_morph
+    cutoff: 100.0
+    resonance: 0.8
+    morph: 0.5
+
+modulation:
+  - { src: ros1.x, dst: fold.drive,    depth: 6.5, scale: linear, range: positive }
+  - { src: ros1.y, dst: filt.cutoff,   depth: 7.0, scale: exp2,   range: positive }
+  - { src: ros1.z, dst: filt.resonance, depth: 0.15, scale: linear, range: positive }
+  - { src: ros1.x, dst: filt.morph,    depth: 0.55, scale: linear, range: bipolar }

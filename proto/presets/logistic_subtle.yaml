@@ -1,0 +1,23 @@
+name: logistic_subtle
+description: Narrow granular roam (±15% position), no pitch mod. Preserves pitch; adds gentle stutter.
+tier: per_engine
+
+cores:
+  - id: lpos
+    type: logistic
+    r: 3.45
+    step_rate: 3.5
+    x0: 0.42
+    smoothing_hz: 3.0
+
+chain:
+  - id: gran
+    type: granular
+    position: 0.5
+    pitch: 1.0
+    grain_size_ms: 200.0
+    overlap: 8
+    jitter: 0.01
+
+modulation:
+  - { src: lpos.x, dst: gran.position, depth: 0.15, scale: linear, range: bipolar }

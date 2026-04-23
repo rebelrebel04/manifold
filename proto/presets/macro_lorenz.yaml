@@ -1,0 +1,27 @@
+name: macro_lorenz
+description: Lorenz driven by macros only. Sweep cores.lor1.macros.intensity/speed/warmth via --override to audition the curves.
+tier: per_engine
+
+cores:
+  - id: lor1
+    type: lorenz
+    macros:
+      intensity: 0.5
+      speed: 0.4
+      warmth: 0.0
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.4
+  - id: filt
+    type: svf_morph
+    cutoff: 240.0
+    resonance: 0.4
+    morph: 0.5
+
+modulation:
+  - { src: lor1.x, dst: fold.drive,    depth: 2.5, scale: linear, range: positive }
+  - { src: lor1.z, dst: filt.cutoff,   depth: 4.0, scale: exp2,   range: positive }
+  - { src: lor1.y, dst: filt.resonance, depth: 0.25, scale: linear, range: positive }
+  - { src: lor1.x, dst: filt.morph,    depth: 0.5, scale: linear, range: bipolar }

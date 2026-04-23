@@ -1,0 +1,37 @@
+name: combo_all_three
+description: Lorenz → fold, Duffing (coupled) → filter cutoff, Logistic → filter morph. All three chaos models at once.
+tier: combo
+
+cores:
+  - id: lor1
+    type: lorenz
+    speed: 1.1
+  - id: duff
+    type: duffing
+    delta: 0.25
+    gamma: 0.2
+    omega: 1.2
+    speed: 90.0
+    input_drive: 2.5
+  - id: lmorph
+    type: logistic
+    r: 3.56
+    step_rate: 3.0
+    x0: 0.29
+    smoothing_hz: 3.0
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.35
+  - id: filt
+    type: svf_morph
+    cutoff: 280.0
+    resonance: 0.42
+    morph: 0.5
+
+modulation:
+  - { src: lor1.x,   dst: fold.drive,   depth: 2.2, scale: linear, range: positive }
+  - { src: duff.v,   dst: filt.cutoff,  depth: 3.0, scale: exp2,   range: bipolar }
+  - { src: lor1.z,   dst: filt.resonance, depth: 0.2, scale: linear, range: positive }
+  - { src: lmorph.x, dst: filt.morph,   depth: 0.4, scale: linear, range: bipolar }

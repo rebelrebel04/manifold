@@ -1,0 +1,23 @@
+name: aizawa_subtle
+description: Slower Aizawa - petal transitions read as slow, organic parameter drifts.
+tier: per_engine
+
+cores:
+  - id: aiz1
+    type: aizawa
+    speed: 0.5
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.1
+  - id: filt
+    type: svf_morph
+    cutoff: 550.0
+    resonance: 0.25
+    morph: 0.4
+
+modulation:
+  - { src: aiz1.x, dst: fold.drive,  depth: 0.8, scale: linear, range: positive }
+  - { src: aiz1.z, dst: filt.cutoff, depth: 2.2, scale: exp2,   range: bipolar }
+  - { src: aiz1.x, dst: filt.morph,  depth: 0.3, scale: linear, range: bipolar }

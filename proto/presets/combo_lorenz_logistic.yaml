@@ -1,0 +1,37 @@
+name: combo_lorenz_logistic
+description: Lorenz → fold+filter character. Logistic → granular position/pitch after. Two aperiodic motions layered.
+tier: combo
+
+cores:
+  - id: lor1
+    type: lorenz
+    speed: 1.0
+  - id: lpos
+    type: logistic
+    r: 3.53
+    step_rate: 4.0
+    x0: 0.41
+    smoothing_hz: 3.5
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.3
+  - id: filt
+    type: svf_morph
+    cutoff: 300.0
+    resonance: 0.35
+    morph: 0.4
+  - id: gran
+    type: granular
+    position: 0.5
+    pitch: 1.0
+    grain_size_ms: 180.0
+    overlap: 6
+    jitter: 0.03
+
+modulation:
+  - { src: lor1.x,  dst: fold.drive,    depth: 2.0, scale: linear, range: positive }
+  - { src: lor1.y,  dst: filt.cutoff,   depth: 3.5, scale: exp2,   range: positive }
+  - { src: lor1.z,  dst: filt.morph,    depth: 0.3, scale: linear, range: bipolar }
+  - { src: lpos.x,  dst: gran.position, depth: 0.35, scale: linear, range: bipolar }

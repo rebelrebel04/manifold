@@ -1,0 +1,27 @@
+name: duffing_coupled
+description: Input signal perturbs Duffing; state modulates fold+filter on dry. Loud input = wild chaos.
+tier: per_engine
+
+cores:
+  - id: duff
+    type: duffing
+    delta: 0.2
+    gamma: 0.25
+    omega: 1.2
+    speed: 100.0
+    input_drive: 3.5
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.2
+  - id: filt
+    type: svf_morph
+    cutoff: 500.0
+    resonance: 0.3
+    morph: 0.5
+
+modulation:
+  - { src: duff.x, dst: fold.drive,  depth: 1.8, scale: linear, range: positive }
+  - { src: duff.v, dst: filt.cutoff, depth: 2.8, scale: exp2,   range: positive }
+  - { src: duff.x, dst: filt.morph,  depth: 0.4, scale: linear, range: positive }

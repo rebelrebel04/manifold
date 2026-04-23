@@ -1,0 +1,29 @@
+name: lorenz_dual_speed
+description: Two Lorenz cores - slow drives filter sweeps, fast drives fold + morph. Macro + micro motion layered.
+tier: combo
+
+cores:
+  - id: slow
+    type: lorenz
+    speed: 0.4
+    init: [1.0, 1.0, 1.0]
+  - id: fast
+    type: lorenz
+    speed: 2.8
+    init: [-0.5, 0.8, 2.0]
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.4
+  - id: filt
+    type: svf_morph
+    cutoff: 180.0
+    resonance: 0.45
+    morph: 0.45
+
+modulation:
+  - { src: fast.x, dst: fold.drive,    depth: 2.8, scale: linear, range: positive }
+  - { src: slow.y, dst: filt.cutoff,   depth: 4.5, scale: exp2,   range: positive }
+  - { src: slow.z, dst: filt.resonance, depth: 0.25, scale: linear, range: positive }
+  - { src: fast.z, dst: filt.morph,    depth: 0.4, scale: linear, range: bipolar }

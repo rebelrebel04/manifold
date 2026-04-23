@@ -1,0 +1,27 @@
+name: combo_lorenz_chua
+description: Lorenz wings drive fold + morph; Chua double-scroll drives cutoff + resonance. Two regime-switchers layered - macro character events at different rates.
+tier: combo
+
+cores:
+  - id: lor1
+    type: lorenz
+    speed: 1.1
+  - id: chua1
+    type: chua
+    speed: 0.7
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.5
+  - id: filt
+    type: svf_morph
+    cutoff: 200.0
+    resonance: 0.5
+    morph: 0.5
+
+modulation:
+  - { src: lor1.x,  dst: fold.drive,     depth: 2.8, scale: linear, range: positive }
+  - { src: lor1.z,  dst: filt.morph,     depth: 0.5, scale: linear, range: bipolar }
+  - { src: chua1.z, dst: filt.cutoff,    depth: 4.5, scale: exp2,   range: positive }
+  - { src: chua1.y, dst: filt.resonance, depth: 0.3, scale: linear, range: positive }

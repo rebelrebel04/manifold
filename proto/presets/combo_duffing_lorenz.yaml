@@ -1,0 +1,31 @@
+name: combo_duffing_lorenz
+description: Duffing (input-coupled) drives fold; Lorenz drives filter. Signal dynamics + autonomous motion mixed.
+tier: combo
+
+cores:
+  - id: duff
+    type: duffing
+    delta: 0.22
+    gamma: 0.2
+    omega: 1.2
+    speed: 110.0
+    input_drive: 3.0
+  - id: lor1
+    type: lorenz
+    speed: 0.8
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.3
+  - id: filt
+    type: svf_morph
+    cutoff: 350.0
+    resonance: 0.4
+    morph: 0.45
+
+modulation:
+  - { src: duff.x,  dst: fold.drive,    depth: 2.2, scale: linear, range: positive }
+  - { src: lor1.y,  dst: filt.cutoff,   depth: 3.2, scale: exp2,   range: positive }
+  - { src: lor1.z,  dst: filt.resonance, depth: 0.2, scale: linear, range: positive }
+  - { src: duff.v,  dst: filt.morph,    depth: 0.35, scale: linear, range: bipolar }

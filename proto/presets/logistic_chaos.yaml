@@ -1,0 +1,30 @@
+name: logistic_chaos
+description: Full-chaos r=3.92. Long grains + heavy smoothing keep it musical; wilder character than logistic_grains.
+tier: per_engine
+
+cores:
+  - id: lpos
+    type: logistic
+    r: 3.92
+    step_rate: 3.0
+    x0: 0.33
+    smoothing_hz: 2.5
+  - id: lpitch
+    type: logistic
+    r: 3.88
+    step_rate: 2.0
+    x0: 0.62
+    smoothing_hz: 2.5
+
+chain:
+  - id: gran
+    type: granular
+    position: 0.5
+    pitch: 1.0
+    grain_size_ms: 250.0
+    overlap: 8
+    jitter: 0.05
+
+modulation:
+  - { src: lpos.x,   dst: gran.position, depth: 0.7, scale: linear, range: positive }
+  - { src: lpitch.x, dst: gran.pitch,    depth: 0.58, scale: exp2,  range: bipolar }

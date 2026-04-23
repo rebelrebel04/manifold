@@ -1,0 +1,34 @@
+name: lorenz_triple_layered
+description: Three Lorenz cores at very-slow / medium / fast speeds. Layered timescales - evolving tone + main character + micro flutter.
+tier: combo
+
+cores:
+  - id: vslow
+    type: lorenz
+    speed: 0.22
+    init: [1.5, -0.3, 1.0]
+  - id: mid
+    type: lorenz
+    speed: 1.0
+    init: [1.0, 1.0, 1.0]
+  - id: fast
+    type: lorenz
+    speed: 3.2
+    init: [-1.0, 0.5, 2.5]
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.4
+  - id: filt
+    type: svf_morph
+    cutoff: 160.0
+    resonance: 0.4
+    morph: 0.5
+
+modulation:
+  - { src: fast.x,  dst: fold.drive,    depth: 2.5, scale: linear, range: positive }
+  - { src: mid.y,   dst: filt.cutoff,   depth: 4.2, scale: exp2,   range: positive }
+  - { src: vslow.z, dst: filt.resonance, depth: 0.3, scale: linear, range: positive }
+  - { src: fast.z,  dst: filt.morph,    depth: 0.35, scale: linear, range: bipolar }
+  - { src: vslow.x, dst: filt.morph,    depth: 0.25, scale: linear, range: bipolar }

@@ -1,0 +1,29 @@
+name: combo_rossler_lorenz
+description: Pushed Rössler spirals on fold drive + Lorenz butterfly on cutoff and morph. Two flagship continuous attractors - the 'Portal-in-one' mix.
+tier: combo
+
+cores:
+  - id: ros1
+    type: rossler
+    speed: 2.8
+    a: 0.25
+    c: 11.0
+  - id: lor1
+    type: lorenz
+    speed: 1.3
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.8
+  - id: filt
+    type: svf_morph
+    cutoff: 170.0
+    resonance: 0.55
+    morph: 0.5
+
+modulation:
+  - { src: ros1.y, dst: fold.drive,     depth: 4.2, scale: linear, range: positive }
+  - { src: ros1.z, dst: filt.resonance, depth: 0.25, scale: linear, range: positive }
+  - { src: lor1.z, dst: filt.cutoff,    depth: 5.0, scale: exp2,   range: positive }
+  - { src: lor1.x, dst: filt.morph,     depth: 0.55, scale: linear, range: bipolar }

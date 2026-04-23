@@ -1,0 +1,24 @@
+name: rossler_character
+description: Rössler attractor - spiraling tension + z-excursion reinjection. Smoother than Lorenz, more sustained.
+tier: per_engine
+
+cores:
+  - id: ros1
+    type: rossler
+    speed: 1.0
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.4
+  - id: filt
+    type: svf_morph
+    cutoff: 200.0
+    resonance: 0.4
+    morph: 0.5
+
+modulation:
+  - { src: ros1.x, dst: fold.drive,    depth: 2.2, scale: linear, range: positive }
+  - { src: ros1.y, dst: filt.cutoff,   depth: 4.0, scale: exp2,   range: positive }
+  - { src: ros1.z, dst: filt.resonance, depth: 0.3, scale: linear, range: positive }
+  - { src: ros1.z, dst: filt.morph,    depth: 0.4, scale: linear, range: bipolar }

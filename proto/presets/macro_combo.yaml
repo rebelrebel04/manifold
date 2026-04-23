@@ -1,0 +1,33 @@
+name: macro_combo
+description: Two-core combo driven by macros. Thomas slow drift + Aizawa petals, each with independent intensity/speed/warmth knobs.
+tier: combo
+
+cores:
+  - id: tho1
+    type: thomas
+    macros:
+      intensity: 0.6
+      speed: 0.25
+      warmth: 0.0
+  - id: aiz1
+    type: aizawa
+    macros:
+      intensity: 0.5
+      speed: 0.6
+      warmth: 0.0
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.4
+  - id: filt
+    type: svf_morph
+    cutoff: 260.0
+    resonance: 0.4
+    morph: 0.5
+
+modulation:
+  - { src: tho1.z, dst: filt.cutoff,    depth: 3.8, scale: exp2,   range: bipolar }
+  - { src: tho1.x, dst: filt.resonance, depth: 0.22, scale: linear, range: positive }
+  - { src: aiz1.x, dst: fold.drive,     depth: 2.8, scale: linear, range: positive }
+  - { src: aiz1.z, dst: filt.morph,     depth: 0.5, scale: linear, range: bipolar }

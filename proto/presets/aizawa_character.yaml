@@ -1,0 +1,24 @@
+name: aizawa_character
+description: Aizawa flower-petal orbits - multi-lobed motion gives rhythmic but aperiodic parameter sweeps.
+tier: per_engine
+
+cores:
+  - id: aiz1
+    type: aizawa
+    speed: 1.0
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.4
+  - id: filt
+    type: svf_morph
+    cutoff: 220.0
+    resonance: 0.4
+    morph: 0.5
+
+modulation:
+  - { src: aiz1.x, dst: fold.drive,    depth: 2.5, scale: linear, range: positive }
+  - { src: aiz1.z, dst: filt.cutoff,   depth: 3.8, scale: exp2,   range: positive }
+  - { src: aiz1.y, dst: filt.resonance, depth: 0.3, scale: linear, range: positive }
+  - { src: aiz1.x, dst: filt.morph,    depth: 0.45, scale: linear, range: bipolar }

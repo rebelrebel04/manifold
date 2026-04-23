@@ -1,0 +1,23 @@
+name: lorenz_subtle
+description: Slow Lorenz, narrow fold/filter ranges. Preserves source character; adds drift.
+tier: per_engine
+
+cores:
+  - id: lor1
+    type: lorenz
+    speed: 0.5
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.1
+  - id: filt
+    type: svf_morph
+    cutoff: 400.0
+    resonance: 0.25
+    morph: 0.3
+
+modulation:
+  - { src: lor1.x, dst: fold.drive,  depth: 0.8, scale: linear, range: positive }
+  - { src: lor1.y, dst: filt.cutoff, depth: 1.5, scale: exp2,   range: bipolar }
+  - { src: lor1.z, dst: filt.morph,  depth: 0.2, scale: linear, range: bipolar }

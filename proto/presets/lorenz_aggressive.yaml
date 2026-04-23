@@ -1,0 +1,24 @@
+name: lorenz_aggressive
+description: Fast Lorenz, deep wavefold, high resonance. Heavy character-transform.
+tier: per_engine
+
+cores:
+  - id: lor1
+    type: lorenz
+    speed: 2.4
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 2.0
+  - id: filt
+    type: svf_morph
+    cutoff: 120.0
+    resonance: 0.65
+    morph: 0.45
+
+modulation:
+  - { src: lor1.x, dst: fold.drive,    depth: 4.0, scale: linear, range: positive }
+  - { src: lor1.y, dst: filt.cutoff,   depth: 5.5, scale: exp2,   range: positive }
+  - { src: lor1.z, dst: filt.resonance, depth: 0.3, scale: linear, range: positive }
+  - { src: lor1.z, dst: filt.morph,    depth: 0.5, scale: linear, range: bipolar }

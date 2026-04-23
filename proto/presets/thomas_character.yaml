@@ -1,0 +1,25 @@
+name: thomas_character
+description: Thomas cyclically symmetric - drifting 3D motion with no dominant plane. Different "feel" than Lorenz.
+tier: per_engine
+
+cores:
+  - id: tho1
+    type: thomas
+    speed: 1.0
+    b: 0.19
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.4
+  - id: filt
+    type: svf_morph
+    cutoff: 220.0
+    resonance: 0.4
+    morph: 0.5
+
+modulation:
+  - { src: tho1.x, dst: fold.drive,    depth: 2.2, scale: linear, range: positive }
+  - { src: tho1.y, dst: filt.cutoff,   depth: 3.8, scale: exp2,   range: positive }
+  - { src: tho1.z, dst: filt.resonance, depth: 0.3, scale: linear, range: positive }
+  - { src: tho1.x, dst: filt.morph,    depth: 0.4, scale: linear, range: bipolar }

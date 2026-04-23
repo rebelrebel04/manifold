@@ -1,0 +1,23 @@
+name: rossler_subtle
+description: Slow Rössler, gentle motion. Adds smooth spiraling drift without masking source.
+tier: per_engine
+
+cores:
+  - id: ros1
+    type: rossler
+    speed: 0.45
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.05
+  - id: filt
+    type: svf_morph
+    cutoff: 500.0
+    resonance: 0.2
+    morph: 0.35
+
+modulation:
+  - { src: ros1.x, dst: fold.drive,  depth: 0.6, scale: linear, range: positive }
+  - { src: ros1.y, dst: filt.cutoff, depth: 1.8, scale: exp2,   range: bipolar }
+  - { src: ros1.z, dst: filt.morph,  depth: 0.25, scale: linear, range: bipolar }

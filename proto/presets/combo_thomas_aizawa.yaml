@@ -1,0 +1,27 @@
+name: combo_thomas_aizawa
+description: Slow Thomas drift on cutoff (long smooth sweeps) + Aizawa flower-petals on fold and morph (rhythmic accents). Contrasting timescales, organic feel.
+tier: combo
+
+cores:
+  - id: tho1
+    type: thomas
+    speed: 0.5
+  - id: aiz1
+    type: aizawa
+    speed: 1.4
+
+chain:
+  - id: fold
+    type: wavefolder
+    drive: 1.4
+  - id: filt
+    type: svf_morph
+    cutoff: 320.0
+    resonance: 0.4
+    morph: 0.5
+
+modulation:
+  - { src: tho1.z,  dst: filt.cutoff,    depth: 3.8, scale: exp2,   range: bipolar }
+  - { src: tho1.x,  dst: filt.resonance, depth: 0.2, scale: linear, range: positive }
+  - { src: aiz1.x,  dst: fold.drive,     depth: 2.6, scale: linear, range: positive }
+  - { src: aiz1.z,  dst: filt.morph,     depth: 0.5, scale: linear, range: bipolar }
