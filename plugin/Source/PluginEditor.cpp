@@ -3,12 +3,13 @@
 
 namespace
 {
-    constexpr int kEditorWidth          = 720;
-    constexpr int kEditorHeightCollapsed = 480;
-    constexpr int kAdvancedPanelHeight  = 210;
+    constexpr int kEditorWidth           = 720;
+    constexpr int kEditorHeightCollapsed = 530;
+    constexpr int kEngineRowHeight       = 56;
+    constexpr int kAdvancedPanelHeight   = 210;
     constexpr int kEditorHeightExpanded = kEditorHeightCollapsed + kAdvancedPanelHeight;
 
-    constexpr const char* kBuildTag = "v0.12.0";
+    constexpr const char* kBuildTag = "v0.13.0";
 
     const juce::Colour kBg          (0xff05050a);
     const juce::Colour kBgPanel     (0xff0d0d18);
@@ -62,19 +63,6 @@ ManifoldEditor::AdvancedPanel::AdvancedPanel()
     filterCombo.setColour (juce::ComboBox::arrowColourId,      kViolet);
     addAndMakeVisible (filterCombo);
 
-    chaosLabel.setText ("CHAOS", juce::dontSendNotification);
-    chaosLabel.setColour (juce::Label::textColourId, kTextDim);
-    chaosLabel.setFont (juce::FontOptions (10.5f, juce::Font::bold));
-    chaosLabel.setJustificationType (juce::Justification::centredRight);
-    addAndMakeVisible (chaosLabel);
-
-    chaosCombo.addItemList (manifold::params::chaosTypeChoices(), 1);
-    chaosCombo.setColour (juce::ComboBox::backgroundColourId, kBg);
-    chaosCombo.setColour (juce::ComboBox::outlineColourId,    kVioletDim.withAlpha (0.5f));
-    chaosCombo.setColour (juce::ComboBox::textColourId,       kTextBright);
-    chaosCombo.setColour (juce::ComboBox::arrowColourId,      kViolet);
-    addAndMakeVisible (chaosCombo);
-
     routeLabel.setText ("ROUTE", juce::dontSendNotification);
     routeLabel.setColour (juce::Label::textColourId, kTextDim);
     routeLabel.setFont (juce::FontOptions (10.5f, juce::Font::bold));
@@ -123,10 +111,6 @@ void ManifoldEditor::AdvancedPanel::resized()
 
     b.removeFromTop (4);
     auto row2 = b.removeFromTop (28);
-    chaosLabel.setBounds (row2.removeFromLeft (55));
-    row2.removeFromLeft (4);
-    chaosCombo.setBounds (row2.removeFromLeft (180));
-    row2.removeFromLeft (24);
     routeLabel.setBounds (row2.removeFromLeft (55));
     row2.removeFromLeft (4);
     routeCombo.setBounds (row2.removeFromLeft (180));
@@ -189,12 +173,24 @@ ManifoldEditor::ManifoldEditor (ManifoldProcessor& p)
     advancedPanel.morph .slider.setTooltip ("SVF: LP <-> BP <-> HP blend. Moog/Diode: 4-pole <-> 2-pole tonal slope. Comb: feedback-path brightness.");
     advancedPanel.output.slider.setTooltip ("Post-filter output gain (dB).");
     advancedPanel.filterCombo.setTooltip ("Resonant filter model. Each type has its own character — Morph behaves differently per filter.");
-    advancedPanel.chaosCombo.setTooltip ("Chaos engine. Lorenz = butterfly; Thomas = braided 3D; Rossler = spirals; Chua = double scroll; Aizawa = flower petals; Henon = discrete 2D map with angular stepped modulation and sudden regime bursts.");
     advancedPanel.routeCombo.setTooltip ("Signal path. Shape -> Filter: harmonics generated then tamed (classic). Filter -> Shape: filter sculpts input first, then shaping reacts to cleaner signal.");
     advancedPanel.shaperCombo.setTooltip ("Transfer curve. Fold = triangle wavefold; SoftClip = tanh; HardClip = brick-wall; Rectify = octave-up; Sine = smooth wrap; TubeAsym = even+odd harmonics; ChebyT3/T5 = pure 3rd/5th harmonic on a sine.");
 
-    auto& apvts = processor.getAPVTS();
+    // Engine toggle row.
     using namespace manifold::params;
+    for (int i = 0; i < kNumChaosEngines; ++i)
+    {
+        auto& btn = engineToggles[(size_t) i];
+        btn.setButtonText (kChaosEngineNames[i]);
+        btn.setClickingTogglesState (true);
+        btn.setColour (juce::TextButton::buttonColourId,   kBgPanel);
+        btn.setColour (juce::TextButton::buttonOnColourId, kVioletDim);
+        btn.setColour (juce::TextButton::textColourOffId,  kTextDim);
+        btn.setColour (juce::TextButton::textColourOnId,   kTextBright);
+        addAndMakeVisible (btn);
+    }
+
+    auto& apvts = processor.getAPVTS();
     intensityAttach = std::make_unique<SliderAttachment> (apvts, id::intensity, intensityKnob.slider);
     speedAttach     = std::make_unique<SliderAttachment> (apvts, id::speed,     speedKnob.slider);
     warmthAttach    = std::make_unique<SliderAttachment> (apvts, id::warmth,    warmthKnob.slider);
@@ -203,8 +199,11 @@ ManifoldEditor::ManifoldEditor (ManifoldProcessor& p)
     resonanceAttach = std::make_unique<SliderAttachment> (apvts, id::resonance, advancedPanel.resonance.slider);
     morphAttach     = std::make_unique<SliderAttachment> (apvts, id::morph,     advancedPanel.morph.slider);
     outputAttach    = std::make_unique<SliderAttachment> (apvts, id::output,    advancedPanel.output.slider);
+    for (int i = 0; i < kNumChaosEngines; ++i)
+        engineAttachments[(size_t) i] = std::make_unique<ButtonAttachment> (
+            apvts, kChaosEngineParamIds[i], engineToggles[(size_t) i]);
+
     filterAttach    = std::make_unique<ComboBoxAttachment> (apvts, id::filterType, advancedPanel.filterCombo);
-    chaosAttach     = std::make_unique<ComboBoxAttachment> (apvts, id::chaosType,  advancedPanel.chaosCombo);
     routeAttach     = std::make_unique<ComboBoxAttachment> (apvts, id::routing,    advancedPanel.routeCombo);
     shaperAttach    = std::make_unique<ComboBoxAttachment> (apvts, id::shaperType, advancedPanel.shaperCombo);
 
@@ -228,6 +227,7 @@ void ManifoldEditor::paint (juce::Graphics& g)
 
 void ManifoldEditor::resized()
 {
+    using namespace manifold::params;
     auto b = getLocalBounds();
 
     // Header strip + advanced toggle live at the top.
@@ -239,6 +239,13 @@ void ManifoldEditor::resized()
         advancedPanel.setBounds (b.removeFromBottom (kAdvancedPanelHeight));
 
     auto knobRow = b.removeFromBottom (140);
+
+    // Engine toggle row sits between header and portrait.
+    auto engRow = b.removeFromTop (kEngineRowHeight);
+    const int btnW = engRow.getWidth() / kNumChaosEngines;
+    for (int i = 0; i < kNumChaosEngines; ++i)
+        engineToggles[(size_t) i].setBounds (engRow.removeFromLeft (btnW).reduced (4, 8));
+
     portrait.setBounds (b);
 
     const int knobW = knobRow.getWidth() / 3;

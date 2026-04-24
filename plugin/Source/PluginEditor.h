@@ -2,6 +2,7 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "PluginProcessor.h"
+#include "Params.h"
 #include "ui/PhasePortrait.h"
 
 class ManifoldEditor : public juce::AudioProcessorEditor
@@ -35,8 +36,6 @@ private:
 
         juce::Label    filterLabel;
         juce::ComboBox filterCombo;
-        juce::Label    chaosLabel;
-        juce::ComboBox chaosCombo;
         juce::Label    routeLabel;
         juce::ComboBox routeCombo;
         juce::Label    shaperLabel;
@@ -66,7 +65,12 @@ private:
 
     std::unique_ptr<SliderAttachment> intensityAttach, speedAttach, warmthAttach;
     std::unique_ptr<SliderAttachment>   driveAttach, cutoffAttach, resonanceAttach, morphAttach, outputAttach;
-    std::unique_ptr<ComboBoxAttachment> filterAttach, chaosAttach, routeAttach, shaperAttach;
+    std::unique_ptr<ComboBoxAttachment> filterAttach, routeAttach, shaperAttach;
+
+    // Engine toggle row (above portrait).
+    using ButtonAttachment = juce::AudioProcessorValueTreeState::ButtonAttachment;
+    std::array<juce::TextButton, manifold::params::kNumChaosEngines> engineToggles;
+    std::array<std::unique_ptr<ButtonAttachment>, manifold::params::kNumChaosEngines> engineAttachments;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ManifoldEditor)
 };

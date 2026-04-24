@@ -69,8 +69,16 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     // boundaries for this DSP; per-sample reads would be wasteful.
     using namespace manifold::params;
     const auto filterType = (FilterType) (int) apvts.getRawParameterValue (id::filterType)->load();
-    const auto chaosType  = (ChaosType)  (int) apvts.getRawParameterValue (id::chaosType)->load();
     const auto routing    = (Routing)    (int) apvts.getRawParameterValue (id::routing)->load();
+
+    const bool useLorenz  = apvts.getRawParameterValue (id::chaosLorenz) ->load() > 0.5f;
+    const bool useThomas  = apvts.getRawParameterValue (id::chaosThomas) ->load() > 0.5f;
+    const bool useRossler = apvts.getRawParameterValue (id::chaosRossler)->load() > 0.5f;
+    const bool useChua    = apvts.getRawParameterValue (id::chaosChua)   ->load() > 0.5f;
+    const bool useAizawa  = apvts.getRawParameterValue (id::chaosAizawa) ->load() > 0.5f;
+    const bool useHenon   = apvts.getRawParameterValue (id::chaosHenon)  ->load() > 0.5f;
+    const int  activeCount = (int)useLorenz + (int)useThomas + (int)useRossler
+                           + (int)useChua   + (int)useAizawa + (int)useHenon;
     const auto shaperType = (manifold::dsp::shaper::Type) (int) apvts.getRawParameterValue (id::shaperType)->load();
     const float intensity = apvts.getRawParameterValue (id::intensity)->load();
     const float speedKnob = apvts.getRawParameterValue (id::speed)->load();
@@ -81,18 +89,13 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     const float baseMorph = apvts.getRawParameterValue (id::morph)->load();
     const float outGainDb = apvts.getRawParameterValue (id::output)->load();
 
-    lorenz.setRho   (lorenzRhoFromIntensity (intensity));
-    lorenz.setSpeed (lorenzSpeedFromMacro   (speedKnob));
-    thomas.setB     (thomasBFromIntensity   (intensity));
-    thomas.setSpeed (lorenzSpeedFromMacro   (speedKnob));
-    rossler.setC    (rosslerCFromIntensity  (intensity));
-    rossler.setSpeed(lorenzSpeedFromMacro   (speedKnob));
-    chua.setAlpha   (chuaAlphaFromIntensity (intensity));
-    chua.setSpeed   (lorenzSpeedFromMacro   (speedKnob));
-    aizawa.setA     (aizawaAFromIntensity   (intensity));
-    aizawa.setSpeed (lorenzSpeedFromMacro   (speedKnob));
-    henon.setA      (henonAFromIntensity    (intensity));
-    henon.setSpeed  (lorenzSpeedFromMacro   (speedKnob));
+    const float speedRaw = lorenzSpeedFromMacro (speedKnob);
+    lorenz.setRho   (lorenzRhoFromIntensity (intensity)); lorenz.setSpeed  (speedRaw);
+    thomas.setB     (thomasBFromIntensity   (intensity)); thomas.setSpeed  (speedRaw);
+    rossler.setC    (rosslerCFromIntensity  (intensity)); rossler.setSpeed (speedRaw);
+    chua.setAlpha   (chuaAlphaFromIntensity (intensity)); chua.setSpeed    (speedRaw);
+    aizawa.setA     (aizawaAFromIntensity   (intensity)); aizawa.setSpeed  (speedRaw);
+    henon.setA      (henonAFromIntensity    (intensity)); henon.setSpeed   (speedRaw);
 
     const float smoothingHz = warmthToSmoothingHz (warmth);
     // One-pole coefficient. smoothingHz == 0 -> a = 1 (bypass, no smoothing).
@@ -112,42 +115,26 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
 
     for (int i = 0; i < numSamples; ++i)
     {
-        // One chaos step per sample, normalized to [-1, 1], smoothed per Warmth.
-        const auto n = [&]
+        // Step all active engines and average their normalized states.
+        // N=1 is identical to the old single-engine behavior.
+        double ax = 0.0, ay = 0.0, az = 0.0;
+        const int n_active = activeCount > 0 ? activeCount : 1;  // guard div-by-zero
+        auto accum = [&] (manifold::chaos::Lorenz::Sample s)
         {
-            if (chaosType == ChaosType::Thomas)
-            {
-                const auto raw = thomas.step (currentSampleRate);
-                const auto nt  = manifold::chaos::Thomas::normalize (raw);
-                return manifold::chaos::Lorenz::Sample { nt.x, nt.y, nt.z };
-            }
-            if (chaosType == ChaosType::Rossler)
-            {
-                const auto raw = rossler.step (currentSampleRate);
-                const auto nr  = manifold::chaos::Rossler::normalize (raw);
-                return manifold::chaos::Lorenz::Sample { nr.x, nr.y, nr.z };
-            }
-            if (chaosType == ChaosType::Chua)
-            {
-                const auto raw = chua.step (currentSampleRate);
-                const auto nc  = manifold::chaos::Chua::normalize (raw);
-                return manifold::chaos::Lorenz::Sample { nc.x, nc.y, nc.z };
-            }
-            if (chaosType == ChaosType::Aizawa)
-            {
-                const auto raw = aizawa.step (currentSampleRate);
-                const auto na  = manifold::chaos::Aizawa::normalize (raw);
-                return manifold::chaos::Lorenz::Sample { na.x, na.y, na.z };
-            }
-            if (chaosType == ChaosType::Henon)
-            {
-                const auto raw = henon.step (currentSampleRate);
-                const auto nh  = manifold::chaos::Henon::normalize (raw);
-                return manifold::chaos::Lorenz::Sample { nh.x, nh.y, nh.z };
-            }
-            const auto raw = lorenz.step (currentSampleRate);
-            return manifold::chaos::Lorenz::normalize (raw);
-        }();
+            ax += s.x; ay += s.y; az += s.z;
+        };
+        if (useLorenz)  { auto r = lorenz.step  (currentSampleRate); accum (manifold::chaos::Lorenz::normalize  (r)); }
+        if (useThomas)  { auto r = thomas.step  (currentSampleRate); auto nt = manifold::chaos::Thomas::normalize  (r); accum ({nt.x, nt.y, nt.z}); }
+        if (useRossler) { auto r = rossler.step (currentSampleRate); auto nr = manifold::chaos::Rossler::normalize (r); accum ({nr.x, nr.y, nr.z}); }
+        if (useChua)    { auto r = chua.step    (currentSampleRate); auto nc = manifold::chaos::Chua::normalize    (r); accum ({nc.x, nc.y, nc.z}); }
+        if (useAizawa)  { auto r = aizawa.step  (currentSampleRate); auto na = manifold::chaos::Aizawa::normalize  (r); accum ({na.x, na.y, na.z}); }
+        if (useHenon)   { auto r = henon.step   (currentSampleRate); auto nh = manifold::chaos::Henon::normalize   (r); accum ({nh.x, nh.y, nh.z}); }
+        // If nothing is selected, engines still stepped above (0 accumulators), give silence.
+        const manifold::chaos::Lorenz::Sample n {
+            ax / n_active,
+            ay / n_active,
+            az / n_active
+        };
 
         modSmoothedX += smoothA * (static_cast<float> (n.x) - modSmoothedX);
         modSmoothedY += smoothA * (static_cast<float> (n.y) - modSmoothedY);

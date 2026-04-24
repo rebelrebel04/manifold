@@ -17,25 +17,33 @@ namespace id
     inline constexpr const char* morph      = "morph";
     inline constexpr const char* output     = "output";
     inline constexpr const char* filterType = "filterType";
-    inline constexpr const char* chaosType  = "chaosType";
+    // Per-engine toggles — each is an independent bool.
+    inline constexpr const char* chaosLorenz  = "chaosLorenz";
+    inline constexpr const char* chaosThomas  = "chaosThomas";
+    inline constexpr const char* chaosRossler = "chaosRossler";
+    inline constexpr const char* chaosChua    = "chaosChua";
+    inline constexpr const char* chaosAizawa  = "chaosAizawa";
+    inline constexpr const char* chaosHenon   = "chaosHenon";
     inline constexpr const char* routing    = "routing";
     inline constexpr const char* shaperType = "shaperType";
 }
 
 enum class FilterType : int { SVF = 0, MoogLadder = 1, DiodeLadder = 2, TunedComb = 3 };
-enum class ChaosType  : int { Lorenz = 0, Thomas = 1, Rossler = 2, Chua = 3, Aizawa = 4, Henon = 5 };
 enum class Routing    : int { FoldThenFilter = 0, FilterThenFold = 1 };
+
+// Names and param IDs indexed the same way for UI + processor iteration.
+inline constexpr int kNumChaosEngines = 6;
+inline constexpr const char* kChaosEngineNames[kNumChaosEngines]   = { "LORENZ", "THOMAS", "ROSSLER", "CHUA", "AIZAWA", "HENON" };
+inline constexpr const char* kChaosEngineParamIds[kNumChaosEngines] = {
+    id::chaosLorenz, id::chaosThomas, id::chaosRossler,
+    id::chaosChua,   id::chaosAizawa, id::chaosHenon
+};
 // Mirrors manifold::dsp::shaper::Type.
 enum class ShaperType : int { Fold = 0, SoftClip = 1, HardClip = 2, Rectify = 3, Sine = 4, TubeAsym = 5, ChebyT3 = 6, ChebyT5 = 7 };
 
 inline juce::StringArray filterTypeChoices()
 {
     return { "SVF", "Moog Ladder", "Diode Ladder", "Tuned Comb" };
-}
-
-inline juce::StringArray chaosTypeChoices()
-{
-    return { "Lorenz", "Thomas", "Rossler", "Chua", "Aizawa", "Henon" };
 }
 
 inline juce::StringArray routingChoices()
@@ -82,9 +90,13 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout makeLayout()
         juce::ParameterID { id::filterType, 1 }, "Filter",
         filterTypeChoices(), (int) FilterType::SVF));
 
-    p.push_back (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { id::chaosType, 1 }, "Chaos",
-        chaosTypeChoices(), (int) ChaosType::Lorenz));
+    // Per-engine toggles. Lorenz on by default; rest off.
+    p.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { id::chaosLorenz,  1 }, "Lorenz",  true));
+    p.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { id::chaosThomas,  1 }, "Thomas",  false));
+    p.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { id::chaosRossler, 1 }, "Rossler", false));
+    p.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { id::chaosChua,    1 }, "Chua",    false));
+    p.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { id::chaosAizawa,  1 }, "Aizawa",  false));
+    p.push_back (std::make_unique<juce::AudioParameterBool> (juce::ParameterID { id::chaosHenon,   1 }, "Henon",   false));
 
     p.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { id::routing, 1 }, "Routing",
