@@ -23,7 +23,7 @@ namespace id
 }
 
 enum class FilterType : int { SVF = 0, MoogLadder = 1, DiodeLadder = 2, TunedComb = 3 };
-enum class ChaosType  : int { Lorenz = 0, Thomas = 1, Rossler = 2 };
+enum class ChaosType  : int { Lorenz = 0, Thomas = 1, Rossler = 2, Chua = 3, Aizawa = 4, Henon = 5 };
 enum class Routing    : int { FoldThenFilter = 0, FilterThenFold = 1 };
 // Mirrors manifold::dsp::shaper::Type.
 enum class ShaperType : int { Fold = 0, SoftClip = 1, HardClip = 2, Rectify = 3, Sine = 4, TubeAsym = 5, ChebyT3 = 6, ChebyT5 = 7 };
@@ -35,7 +35,7 @@ inline juce::StringArray filterTypeChoices()
 
 inline juce::StringArray chaosTypeChoices()
 {
-    return { "Lorenz", "Thomas", "Rossler" };
+    return { "Lorenz", "Thomas", "Rossler", "Chua", "Aizawa", "Henon" };
 }
 
 inline juce::StringArray routingChoices()
@@ -120,6 +120,26 @@ inline float thomasBFromIntensity (float intensity01) noexcept
 inline float rosslerCFromIntensity (float intensity01) noexcept
 {
     return 5.0f + (10.0f - 5.0f) * juce::jlimit (0.0f, 1.0f, intensity01);
+}
+
+// Chua intensity mapping. alpha ~= 15.6 is the classic double-scroll value; lower alpha
+// sits in periodic regimes, higher alpha gets noisier/more sprawling.
+inline float chuaAlphaFromIntensity (float intensity01) noexcept
+{
+    return 12.0f + (22.0f - 12.0f) * juce::jlimit (0.0f, 1.0f, intensity01);
+}
+
+// Aizawa intensity mapping. a ~= 0.95 is the classic petal attractor. Lower a tightens
+// the petals; higher a (toward 1.0) makes the geometry looser and more complex.
+inline float aizawaAFromIntensity (float intensity01) noexcept
+{
+    return 0.85f + (1.0f - 0.85f) * juce::jlimit (0.0f, 1.0f, intensity01);
+}
+
+// Hénon intensity mapping. a=1.0 is near period-3; a=1.4 is the classic fully-chaotic setting.
+inline float henonAFromIntensity (float intensity01) noexcept
+{
+    return 1.0f + (1.4f - 1.0f) * juce::jlimit (0.0f, 1.0f, intensity01);
 }
 
 // warmth == 0 -> no smoothing. warmth > 0 -> lerp 400 Hz -> 8 Hz (higher warmth = slower).

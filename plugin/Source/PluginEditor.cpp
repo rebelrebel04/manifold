@@ -8,7 +8,7 @@ namespace
     constexpr int kAdvancedPanelHeight  = 210;
     constexpr int kEditorHeightExpanded = kEditorHeightCollapsed + kAdvancedPanelHeight;
 
-    constexpr const char* kBuildTag = "v0.10.0";
+    constexpr const char* kBuildTag = "v0.12.0";
 
     const juce::Colour kBg          (0xff05050a);
     const juce::Colour kBgPanel     (0xff0d0d18);
@@ -189,7 +189,7 @@ ManifoldEditor::ManifoldEditor (ManifoldProcessor& p)
     advancedPanel.morph .slider.setTooltip ("SVF: LP <-> BP <-> HP blend. Moog/Diode: 4-pole <-> 2-pole tonal slope. Comb: feedback-path brightness.");
     advancedPanel.output.slider.setTooltip ("Post-filter output gain (dB).");
     advancedPanel.filterCombo.setTooltip ("Resonant filter model. Each type has its own character — Morph behaves differently per filter.");
-    advancedPanel.chaosCombo.setTooltip ("Chaos engine. Lorenz = butterfly with regime switches; Thomas = braided cyclically-symmetric 3D motion; Rossler = smooth spirals with periodic reinjection.");
+    advancedPanel.chaosCombo.setTooltip ("Chaos engine. Lorenz = butterfly; Thomas = braided 3D; Rossler = spirals; Chua = double scroll; Aizawa = flower petals; Henon = discrete 2D map with angular stepped modulation and sudden regime bursts.");
     advancedPanel.routeCombo.setTooltip ("Signal path. Shape -> Filter: harmonics generated then tamed (classic). Filter -> Shape: filter sculpts input first, then shaping reacts to cleaner signal.");
     advancedPanel.shaperCombo.setTooltip ("Transfer curve. Fold = triangle wavefold; SoftClip = tanh; HardClip = brick-wall; Rectify = octave-up; Sine = smooth wrap; TubeAsym = even+odd harmonics; ChebyT3/T5 = pure 3rd/5th harmonic on a sine.");
 

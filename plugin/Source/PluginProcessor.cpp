@@ -33,6 +33,9 @@ void ManifoldProcessor::prepareToPlay (double sampleRate, int)
     lorenz.reset();
     thomas.reset();
     rossler.reset();
+    chua.reset();
+    aizawa.reset();
+    henon.reset();
     svfL  .reset(); svfR  .reset();
     moogL .reset(); moogR .reset();
     diodeL.reset(); diodeR.reset();
@@ -84,6 +87,12 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     thomas.setSpeed (lorenzSpeedFromMacro   (speedKnob));
     rossler.setC    (rosslerCFromIntensity  (intensity));
     rossler.setSpeed(lorenzSpeedFromMacro   (speedKnob));
+    chua.setAlpha   (chuaAlphaFromIntensity (intensity));
+    chua.setSpeed   (lorenzSpeedFromMacro   (speedKnob));
+    aizawa.setA     (aizawaAFromIntensity   (intensity));
+    aizawa.setSpeed (lorenzSpeedFromMacro   (speedKnob));
+    henon.setA      (henonAFromIntensity    (intensity));
+    henon.setSpeed  (lorenzSpeedFromMacro   (speedKnob));
 
     const float smoothingHz = warmthToSmoothingHz (warmth);
     // One-pole coefficient. smoothingHz == 0 -> a = 1 (bypass, no smoothing).
@@ -117,6 +126,24 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
                 const auto raw = rossler.step (currentSampleRate);
                 const auto nr  = manifold::chaos::Rossler::normalize (raw);
                 return manifold::chaos::Lorenz::Sample { nr.x, nr.y, nr.z };
+            }
+            if (chaosType == ChaosType::Chua)
+            {
+                const auto raw = chua.step (currentSampleRate);
+                const auto nc  = manifold::chaos::Chua::normalize (raw);
+                return manifold::chaos::Lorenz::Sample { nc.x, nc.y, nc.z };
+            }
+            if (chaosType == ChaosType::Aizawa)
+            {
+                const auto raw = aizawa.step (currentSampleRate);
+                const auto na  = manifold::chaos::Aizawa::normalize (raw);
+                return manifold::chaos::Lorenz::Sample { na.x, na.y, na.z };
+            }
+            if (chaosType == ChaosType::Henon)
+            {
+                const auto raw = henon.step (currentSampleRate);
+                const auto nh  = manifold::chaos::Henon::normalize (raw);
+                return manifold::chaos::Lorenz::Sample { nh.x, nh.y, nh.z };
             }
             const auto raw = lorenz.step (currentSampleRate);
             return manifold::chaos::Lorenz::normalize (raw);

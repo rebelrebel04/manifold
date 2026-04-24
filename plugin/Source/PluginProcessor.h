@@ -5,6 +5,9 @@
 #include "chaos/Lorenz.h"
 #include "chaos/Thomas.h"
 #include "chaos/Rossler.h"
+#include "chaos/Chua.h"
+#include "chaos/Aizawa.h"
+#include "chaos/Henon.h"
 #include "dsp/SVFMorph.h"
 #include "dsp/MoogLadder.h"
 #include "dsp/DiodeLadder.h"
@@ -53,6 +56,9 @@ private:
     manifold::chaos::Lorenz lorenz;
     manifold::chaos::Thomas thomas;
     manifold::chaos::Rossler rossler;
+    manifold::chaos::Chua    chua;
+    manifold::chaos::Aizawa  aizawa;
+    manifold::chaos::Henon   henon;
     manifold::dsp::SVFMorph    svfL,    svfR;
     manifold::dsp::MoogLadder  moogL,   moogR;
     manifold::dsp::DiodeLadder diodeL,  diodeR;
