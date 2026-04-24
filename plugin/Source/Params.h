@@ -18,10 +18,15 @@ namespace id
     inline constexpr const char* output     = "output";
     inline constexpr const char* filterType = "filterType";
     inline constexpr const char* chaosType  = "chaosType";
+    inline constexpr const char* routing    = "routing";
+    inline constexpr const char* shaperType = "shaperType";
 }
 
 enum class FilterType : int { SVF = 0, MoogLadder = 1, DiodeLadder = 2, TunedComb = 3 };
 enum class ChaosType  : int { Lorenz = 0, Thomas = 1, Rossler = 2 };
+enum class Routing    : int { FoldThenFilter = 0, FilterThenFold = 1 };
+// Mirrors manifold::dsp::shaper::Type.
+enum class ShaperType : int { Fold = 0, SoftClip = 1, HardClip = 2, Rectify = 3, Sine = 4, TubeAsym = 5, ChebyT3 = 6, ChebyT5 = 7 };
 
 inline juce::StringArray filterTypeChoices()
 {
@@ -31,6 +36,16 @@ inline juce::StringArray filterTypeChoices()
 inline juce::StringArray chaosTypeChoices()
 {
     return { "Lorenz", "Thomas", "Rossler" };
+}
+
+inline juce::StringArray routingChoices()
+{
+    return { "Shape -> Filter", "Filter -> Shape" };
+}
+
+inline juce::StringArray shaperTypeChoices()
+{
+    return { "Fold", "Soft Clip", "Hard Clip", "Rectify", "Sine", "Tube Asym", "Cheby T3", "Cheby T5" };
 }
 
 inline juce::AudioProcessorValueTreeState::ParameterLayout makeLayout()
@@ -70,6 +85,14 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout makeLayout()
     p.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { id::chaosType, 1 }, "Chaos",
         chaosTypeChoices(), (int) ChaosType::Lorenz));
+
+    p.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { id::routing, 1 }, "Routing",
+        routingChoices(), (int) Routing::FoldThenFilter));
+
+    p.push_back (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { id::shaperType, 1 }, "Shaper",
+        shaperTypeChoices(), (int) ShaperType::Fold));
 
     return { p.begin(), p.end() };
 }

@@ -37,6 +37,10 @@ private:
         juce::ComboBox filterCombo;
         juce::Label    chaosLabel;
         juce::ComboBox chaosCombo;
+        juce::Label    routeLabel;
+        juce::ComboBox routeCombo;
+        juce::Label    shaperLabel;
+        juce::ComboBox shaperCombo;
 
         LabeledKnob drive    { "DRIVE",     juce::Slider::RotaryHorizontalVerticalDrag };
         LabeledKnob cutoff   { "CUTOFF",    juce::Slider::RotaryHorizontalVerticalDrag };
@@ -62,7 +66,7 @@ private:
 
     std::unique_ptr<SliderAttachment> intensityAttach, speedAttach, warmthAttach;
     std::unique_ptr<SliderAttachment>   driveAttach, cutoffAttach, resonanceAttach, morphAttach, outputAttach;
-    std::unique_ptr<ComboBoxAttachment> filterAttach, chaosAttach;
+    std::unique_ptr<ComboBoxAttachment> filterAttach, chaosAttach, routeAttach, shaperAttach;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ManifoldEditor)
 };

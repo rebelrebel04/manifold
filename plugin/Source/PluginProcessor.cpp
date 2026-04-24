@@ -1,7 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "Params.h"
-#include "dsp/Wavefolder.h"
+#include "dsp/Shaper.h"
 
 #include <cmath>
 #include <cstring>
@@ -67,6 +67,8 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     using namespace manifold::params;
     const auto filterType = (FilterType) (int) apvts.getRawParameterValue (id::filterType)->load();
     const auto chaosType  = (ChaosType)  (int) apvts.getRawParameterValue (id::chaosType)->load();
+    const auto routing    = (Routing)    (int) apvts.getRawParameterValue (id::routing)->load();
+    const auto shaperType = (manifold::dsp::shaper::Type) (int) apvts.getRawParameterValue (id::shaperType)->load();
     const float intensity = apvts.getRawParameterValue (id::intensity)->load();
     const float speedKnob = apvts.getRawParameterValue (id::speed)->load();
     const float warmth    = apvts.getRawParameterValue (id::warmth)->load();
@@ -172,8 +174,15 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
             }
         };
 
-        const float lFolded = manifold::dsp::wavefold (left[i], drive);
-        float lOut = outGain * tiltL.process (runFilter (lFolded, 0), tiltLow, tiltHigh);
+        auto shape = [&] (float v) { return manifold::dsp::shaper::process (shaperType, v, drive); };
+        auto runChain = [&] (float x, int chan)
+        {
+            if (routing == Routing::FilterThenFold)
+                return shape (runFilter (x, chan));
+            return runFilter (shape (x), chan);
+        };
+
+        float lOut = outGain * tiltL.process (runChain (left[i], 0), tiltLow, tiltHigh);
         if (! std::isfinite (lOut))
         {
             // Filter state has corrupted — zero the sample and reset filters so we recover
@@ -186,8 +195,7 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
 
         if (right != nullptr)
         {
-            const float rFolded = manifold::dsp::wavefold (right[i], drive);
-            float rOut = outGain * tiltR.process (runFilter (rFolded, 1), tiltLow, tiltHigh);
+            float rOut = outGain * tiltR.process (runChain (right[i], 1), tiltLow, tiltHigh);
             if (! std::isfinite (rOut))
             {
                 rOut = 0.0f;
