@@ -8,7 +8,7 @@ namespace
     constexpr int kAdvancedPanelHeight  = 170;
     constexpr int kEditorHeightExpanded = kEditorHeightCollapsed + kAdvancedPanelHeight;
 
-    constexpr const char* kBuildTag = "v0.6.0";
+    constexpr const char* kBuildTag = "v0.8.1";
 
     const juce::Colour kBg          (0xff05050a);
     const juce::Colour kBgPanel     (0xff0d0d18);
@@ -62,6 +62,19 @@ ManifoldEditor::AdvancedPanel::AdvancedPanel()
     filterCombo.setColour (juce::ComboBox::arrowColourId,      kViolet);
     addAndMakeVisible (filterCombo);
 
+    chaosLabel.setText ("CHAOS", juce::dontSendNotification);
+    chaosLabel.setColour (juce::Label::textColourId, kTextDim);
+    chaosLabel.setFont (juce::FontOptions (10.5f, juce::Font::bold));
+    chaosLabel.setJustificationType (juce::Justification::centredRight);
+    addAndMakeVisible (chaosLabel);
+
+    chaosCombo.addItemList (manifold::params::chaosTypeChoices(), 1);
+    chaosCombo.setColour (juce::ComboBox::backgroundColourId, kBg);
+    chaosCombo.setColour (juce::ComboBox::outlineColourId,    kVioletDim.withAlpha (0.5f));
+    chaosCombo.setColour (juce::ComboBox::textColourId,       kTextBright);
+    chaosCombo.setColour (juce::ComboBox::arrowColourId,      kViolet);
+    addAndMakeVisible (chaosCombo);
+
     addAndMakeVisible (drive);
     addAndMakeVisible (cutoff);
     addAndMakeVisible (resonance);
@@ -76,7 +89,11 @@ void ManifoldEditor::AdvancedPanel::resized()
     auto top = b.removeFromTop (28);
     filterLabel.setBounds (top.removeFromLeft (60));
     top.removeFromLeft (6);
-    filterCombo.setBounds (top.removeFromLeft (200));
+    filterCombo.setBounds (top.removeFromLeft (170));
+    top.removeFromLeft (20);
+    chaosLabel.setBounds (top.removeFromLeft (60));
+    top.removeFromLeft (6);
+    chaosCombo.setBounds (top.removeFromLeft (140));
 
     b.removeFromTop (6);
     const int n = 5;
@@ -136,6 +153,7 @@ ManifoldEditor::ManifoldEditor (ManifoldProcessor& p)
     advancedPanel.morph .slider.setTooltip ("SVF: LP <-> BP <-> HP blend. Moog/Diode: 4-pole <-> 2-pole tonal slope. Comb: feedback-path brightness.");
     advancedPanel.output.slider.setTooltip ("Post-filter output gain (dB).");
     advancedPanel.filterCombo.setTooltip ("Resonant filter model. Each type has its own character — Morph behaves differently per filter.");
+    advancedPanel.chaosCombo.setTooltip ("Chaos engine. Lorenz = butterfly with regime switches; Thomas = braided cyclically-symmetric 3D motion; Rossler = smooth spirals with periodic reinjection.");
 
     auto& apvts = processor.getAPVTS();
     using namespace manifold::params;
@@ -148,6 +166,7 @@ ManifoldEditor::ManifoldEditor (ManifoldProcessor& p)
     morphAttach     = std::make_unique<SliderAttachment> (apvts, id::morph,     advancedPanel.morph.slider);
     outputAttach    = std::make_unique<SliderAttachment> (apvts, id::output,    advancedPanel.output.slider);
     filterAttach    = std::make_unique<ComboBoxAttachment> (apvts, id::filterType, advancedPanel.filterCombo);
+    chaosAttach     = std::make_unique<ComboBoxAttachment> (apvts, id::chaosType,  advancedPanel.chaosCombo);
 
     setSize (kEditorWidth, kEditorHeightCollapsed);
 }

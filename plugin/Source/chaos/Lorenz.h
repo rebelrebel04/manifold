@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 
 namespace manifold::chaos
 {
@@ -32,6 +33,9 @@ public:
         state.x += dx * dt;
         state.y += dy * dt;
         state.z += dz * dt;
+
+        if (! std::isfinite (state.x) || ! std::isfinite (state.y) || ! std::isfinite (state.z))
+            reset();
         return state;
     }
 

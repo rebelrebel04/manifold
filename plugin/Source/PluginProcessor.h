@@ -3,6 +3,8 @@
 #include <array>
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "chaos/Lorenz.h"
+#include "chaos/Thomas.h"
+#include "chaos/Rossler.h"
 #include "dsp/SVFMorph.h"
 #include "dsp/MoogLadder.h"
 #include "dsp/DiodeLadder.h"
@@ -49,6 +51,8 @@ private:
     juce::AudioProcessorValueTreeState apvts;
 
     manifold::chaos::Lorenz lorenz;
+    manifold::chaos::Thomas thomas;
+    manifold::chaos::Rossler rossler;
     manifold::dsp::SVFMorph    svfL,    svfR;
     manifold::dsp::MoogLadder  moogL,   moogR;
     manifold::dsp::DiodeLadder diodeL,  diodeR;

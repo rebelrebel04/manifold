@@ -31,6 +31,8 @@ void ManifoldProcessor::prepareToPlay (double sampleRate, int)
 {
     currentSampleRate = sampleRate;
     lorenz.reset();
+    thomas.reset();
+    rossler.reset();
     svfL  .reset(); svfR  .reset();
     moogL .reset(); moogR .reset();
     diodeL.reset(); diodeR.reset();
@@ -64,6 +66,7 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     // boundaries for this DSP; per-sample reads would be wasteful.
     using namespace manifold::params;
     const auto filterType = (FilterType) (int) apvts.getRawParameterValue (id::filterType)->load();
+    const auto chaosType  = (ChaosType)  (int) apvts.getRawParameterValue (id::chaosType)->load();
     const float intensity = apvts.getRawParameterValue (id::intensity)->load();
     const float speedKnob = apvts.getRawParameterValue (id::speed)->load();
     const float warmth    = apvts.getRawParameterValue (id::warmth)->load();
@@ -74,7 +77,11 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     const float outGainDb = apvts.getRawParameterValue (id::output)->load();
 
     lorenz.setRho   (lorenzRhoFromIntensity (intensity));
-    lorenz.setSpeed (lorenzSpeedFromMacro  (speedKnob));
+    lorenz.setSpeed (lorenzSpeedFromMacro   (speedKnob));
+    thomas.setB     (thomasBFromIntensity   (intensity));
+    thomas.setSpeed (lorenzSpeedFromMacro   (speedKnob));
+    rossler.setC    (rosslerCFromIntensity  (intensity));
+    rossler.setSpeed(lorenzSpeedFromMacro   (speedKnob));
 
     const float smoothingHz = warmthToSmoothingHz (warmth);
     // One-pole coefficient. smoothingHz == 0 -> a = 1 (bypass, no smoothing).
@@ -94,9 +101,24 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
 
     for (int i = 0; i < numSamples; ++i)
     {
-        // One Lorenz step per sample, normalized to [-1, 1], smoothed per Warmth.
-        const auto raw = lorenz.step (currentSampleRate);
-        const auto n   = manifold::chaos::Lorenz::normalize (raw);
+        // One chaos step per sample, normalized to [-1, 1], smoothed per Warmth.
+        const auto n = [&]
+        {
+            if (chaosType == ChaosType::Thomas)
+            {
+                const auto raw = thomas.step (currentSampleRate);
+                const auto nt  = manifold::chaos::Thomas::normalize (raw);
+                return manifold::chaos::Lorenz::Sample { nt.x, nt.y, nt.z };
+            }
+            if (chaosType == ChaosType::Rossler)
+            {
+                const auto raw = rossler.step (currentSampleRate);
+                const auto nr  = manifold::chaos::Rossler::normalize (raw);
+                return manifold::chaos::Lorenz::Sample { nr.x, nr.y, nr.z };
+            }
+            const auto raw = lorenz.step (currentSampleRate);
+            return manifold::chaos::Lorenz::normalize (raw);
+        }();
 
         modSmoothedX += smoothA * (static_cast<float> (n.x) - modSmoothedX);
         modSmoothedY += smoothA * (static_cast<float> (n.y) - modSmoothedY);
@@ -151,12 +173,28 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         };
 
         const float lFolded = manifold::dsp::wavefold (left[i], drive);
-        left[i] = outGain * tiltL.process (runFilter (lFolded, 0), tiltLow, tiltHigh);
+        float lOut = outGain * tiltL.process (runFilter (lFolded, 0), tiltLow, tiltHigh);
+        if (! std::isfinite (lOut))
+        {
+            // Filter state has corrupted — zero the sample and reset filters so we recover
+            // instead of outputting silent/NaN forever.
+            lOut = 0.0f;
+            svfL.reset();  moogL.reset();  diodeL.reset();  combL.prepare (currentSampleRate);
+            tiltL.reset(); tiltL.prepare ((float) currentSampleRate, kTiltPivotHz);
+        }
+        left[i] = juce::jlimit (-4.0f, 4.0f, lOut);
 
         if (right != nullptr)
         {
             const float rFolded = manifold::dsp::wavefold (right[i], drive);
-            right[i] = outGain * tiltR.process (runFilter (rFolded, 1), tiltLow, tiltHigh);
+            float rOut = outGain * tiltR.process (runFilter (rFolded, 1), tiltLow, tiltHigh);
+            if (! std::isfinite (rOut))
+            {
+                rOut = 0.0f;
+                svfR.reset();  moogR.reset();  diodeR.reset();  combR.prepare (currentSampleRate);
+                tiltR.reset(); tiltR.prepare ((float) currentSampleRate, kTiltPivotHz);
+            }
+            right[i] = juce::jlimit (-4.0f, 4.0f, rOut);
         }
     }
 }
