@@ -3,33 +3,27 @@
 
 namespace
 {
-    constexpr int kEditorWidth           = 720;
-    constexpr int kEditorHeightCollapsed = 530;
-    constexpr int kEngineRowHeight       = 56;
-    constexpr int kAdvancedPanelHeight   = 210;
-    constexpr int kEditorHeightExpanded = kEditorHeightCollapsed + kAdvancedPanelHeight;
+    constexpr int kEditorWidth        = 920;
+    constexpr int kEditorHeight       = 760;
 
-    constexpr const char* kBuildTag = "v0.14.0";
+    constexpr int kHeaderH       = 48;
+    constexpr int kEngineRowH    = 64;
+    constexpr int kMacroRowH     = 138;
+    constexpr int kRoutingRowH   = 64;
+    constexpr int kSecondaryRowH = 110;
+    constexpr int kFooterH       = 28;
 
-    const juce::Colour kBg          (0xff05050a);
-    const juce::Colour kBgPanel     (0xff0d0d18);
-    const juce::Colour kViolet      (0xff8a4dff);
-    const juce::Colour kVioletDim   (0xff5a2fbf);
-    const juce::Colour kTextBright  (0xffe8e6ff);
-    const juce::Colour kTextDim     (0xff7a7a8c);
+    constexpr const char* kBuildTag = "v0.15.0-dev";
 }
 
+// ─────────────────────────────────────────────────────────────────
+// LabeledKnob — uses ManifoldLookAndFeel's matte rotary; per-knob accent set later.
+// ─────────────────────────────────────────────────────────────────
 ManifoldEditor::LabeledKnob::LabeledKnob (const juce::String& l, juce::Slider::SliderStyle style)
     : label (l)
 {
     slider.setSliderStyle (style);
     slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 70, 16);
-    slider.setColour (juce::Slider::rotarySliderFillColourId,    kViolet);
-    slider.setColour (juce::Slider::rotarySliderOutlineColourId, kVioletDim.withAlpha (0.4f));
-    slider.setColour (juce::Slider::thumbColourId,               kTextBright);
-    slider.setColour (juce::Slider::textBoxTextColourId,         kTextBright);
-    slider.setColour (juce::Slider::textBoxOutlineColourId,      juce::Colours::transparentBlack);
-    slider.setColour (juce::Slider::textBoxBackgroundColourId,   juce::Colours::transparentBlack);
     addAndMakeVisible (slider);
 }
 
@@ -42,187 +36,401 @@ void ManifoldEditor::LabeledKnob::resized()
 
 void ManifoldEditor::LabeledKnob::paint (juce::Graphics& g)
 {
-    g.setColour (kTextDim);
+    using LF = manifold::ui::ManifoldLookAndFeel;
+    g.setColour (LF::ink3());
     g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
     g.drawFittedText (label, getLocalBounds().removeFromTop (16),
                       juce::Justification::centred, 1);
 }
 
-ManifoldEditor::AdvancedPanel::AdvancedPanel()
+// ─────────────────────────────────────────────────────────────────
+// PickerCard — clickable card showing the current Shape/Filter selection.
+// Phase 4 makes them visually live; Phase 6/7 will wire click → drawer open.
+// ─────────────────────────────────────────────────────────────────
+ManifoldEditor::PickerCard::PickerCard (const juce::String& kind)
+    : juce::TextButton (kind), kindLabel (kind), optionName (juce::String())
 {
-    filterLabel.setText ("FILTER", juce::dontSendNotification);
-    filterLabel.setColour (juce::Label::textColourId, kTextDim);
-    filterLabel.setFont (juce::FontOptions (10.5f, juce::Font::bold));
-    filterLabel.setJustificationType (juce::Justification::centredRight);
-    addAndMakeVisible (filterLabel);
-
-    filterCombo.addItemList (manifold::params::filterTypeChoices(), 1);
-    filterCombo.setColour (juce::ComboBox::backgroundColourId, kBg);
-    filterCombo.setColour (juce::ComboBox::outlineColourId,    kVioletDim.withAlpha (0.5f));
-    filterCombo.setColour (juce::ComboBox::textColourId,       kTextBright);
-    filterCombo.setColour (juce::ComboBox::arrowColourId,      kViolet);
-    addAndMakeVisible (filterCombo);
-
-    routeLabel.setText ("ROUTE", juce::dontSendNotification);
-    routeLabel.setColour (juce::Label::textColourId, kTextDim);
-    routeLabel.setFont (juce::FontOptions (10.5f, juce::Font::bold));
-    routeLabel.setJustificationType (juce::Justification::centredRight);
-    addAndMakeVisible (routeLabel);
-
-    routeCombo.addItemList (manifold::params::routingChoices(), 1);
-    routeCombo.setColour (juce::ComboBox::backgroundColourId, kBg);
-    routeCombo.setColour (juce::ComboBox::outlineColourId,    kVioletDim.withAlpha (0.5f));
-    routeCombo.setColour (juce::ComboBox::textColourId,       kTextBright);
-    routeCombo.setColour (juce::ComboBox::arrowColourId,      kViolet);
-    addAndMakeVisible (routeCombo);
-
-    shaperLabel.setText ("SHAPE", juce::dontSendNotification);
-    shaperLabel.setColour (juce::Label::textColourId, kTextDim);
-    shaperLabel.setFont (juce::FontOptions (10.5f, juce::Font::bold));
-    shaperLabel.setJustificationType (juce::Justification::centredRight);
-    addAndMakeVisible (shaperLabel);
-
-    shaperCombo.addItemList (manifold::params::shaperTypeChoices(), 1);
-    shaperCombo.setColour (juce::ComboBox::backgroundColourId, kBg);
-    shaperCombo.setColour (juce::ComboBox::outlineColourId,    kVioletDim.withAlpha (0.5f));
-    shaperCombo.setColour (juce::ComboBox::textColourId,       kTextBright);
-    shaperCombo.setColour (juce::ComboBox::arrowColourId,      kViolet);
-    addAndMakeVisible (shaperCombo);
-
-    addAndMakeVisible (drive);
-    addAndMakeVisible (cutoff);
-    addAndMakeVisible (resonance);
-    addAndMakeVisible (morph);
-    addAndMakeVisible (output);
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
 }
 
-void ManifoldEditor::AdvancedPanel::resized()
+void ManifoldEditor::PickerCard::setOptionName (const juce::String& n)
 {
-    auto b = getLocalBounds().reduced (8, 6);
-
-    auto row1 = b.removeFromTop (28);
-    filterLabel.setBounds (row1.removeFromLeft (55));
-    row1.removeFromLeft (4);
-    filterCombo.setBounds (row1.removeFromLeft (180));
-    row1.removeFromLeft (24);
-    shaperLabel.setBounds (row1.removeFromLeft (55));
-    row1.removeFromLeft (4);
-    shaperCombo.setBounds (row1.removeFromLeft (180));
-
-    b.removeFromTop (4);
-    auto row2 = b.removeFromTop (28);
-    routeLabel.setBounds (row2.removeFromLeft (55));
-    row2.removeFromLeft (4);
-    routeCombo.setBounds (row2.removeFromLeft (180));
-
-    b.removeFromTop (6);
-    const int n = 5;
-    const int w = b.getWidth() / n;
-    drive    .setBounds (b.removeFromLeft (w));
-    cutoff   .setBounds (b.removeFromLeft (w));
-    resonance.setBounds (b.removeFromLeft (w));
-    morph    .setBounds (b.removeFromLeft (w));
-    output   .setBounds (b);
+    optionName = n;
+    repaint();
 }
 
-void ManifoldEditor::AdvancedPanel::paint (juce::Graphics& g)
+void ManifoldEditor::PickerCard::paintButton (juce::Graphics& g, bool isMouseOver, bool isButtonDown)
 {
-    g.fillAll (kBgPanel);
-    g.setColour (kVioletDim.withAlpha (0.25f));
-    g.drawHorizontalLine (0, 0.0f, (float) getWidth());
+    juce::ignoreUnused (isButtonDown);
+    using LF = manifold::ui::ManifoldLookAndFeel;
+    const auto bounds = getLocalBounds().toFloat();
+
+    juce::ColourGradient bg (LF::plate2(), bounds.getCentreX(), bounds.getY(),
+                             LF::plate1(), bounds.getCentreX(), bounds.getBottom(), false);
+    g.setGradientFill (bg);
+    g.fillRoundedRectangle (bounds, 8.0f);
+
+    g.setColour (isMouseOver ? LF::plateLineStrong() : LF::plateLine());
+    g.drawRoundedRectangle (bounds.reduced (0.5f), 8.0f, 1.0f);
+
+    auto inner = bounds.reduced (12.0f, 8.0f);
+
+    // Label (kind) — small uppercase mono on the left.
+    g.setColour (LF::ink4());
+    g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
+    auto kindBox = inner.removeFromLeft (54.0f);
+    g.drawFittedText (kindLabel, kindBox.toNearestInt(),
+                      juce::Justification::centredLeft, 1);
+
+    // Arrow chevron on the right.
+    auto arrowBox = inner.removeFromRight (18.0f);
+    g.setColour (LF::ink4());
+    {
+        juce::Path p;
+        p.startNewSubPath (arrowBox.getCentreX() - 4.0f, arrowBox.getCentreY() - 2.0f);
+        p.lineTo          (arrowBox.getCentreX(),         arrowBox.getCentreY() + 2.0f);
+        p.lineTo          (arrowBox.getCentreX() + 4.0f, arrowBox.getCentreY() - 2.0f);
+        g.strokePath (p, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved,
+                                               juce::PathStrokeType::rounded));
+    }
+
+    // Current selection name — large UI font, centred between label and arrow.
+    g.setColour (LF::ink1());
+    g.setFont (juce::FontOptions (14.0f, juce::Font::plain));
+    g.drawFittedText (optionName, inner.toNearestInt(),
+                      juce::Justification::centredLeft, 1);
 }
 
+// ─────────────────────────────────────────────────────────────────
+// BypassOverlay — transparent component layered above everything else.
+// Non-interactive; paints a translucent veil + status badge when bypassed.
+// ─────────────────────────────────────────────────────────────────
+ManifoldEditor::BypassOverlay::BypassOverlay()
+{
+    setInterceptsMouseClicks (false, false);   // clicks pass through to controls below
+    setVisible (false);
+}
+
+void ManifoldEditor::BypassOverlay::paint (juce::Graphics& g)
+{
+    // Translucent dark veil — no banner, the bypass button LED communicates state.
+    g.setColour (juce::Colour (0xff080810).withAlpha (0.68f));
+    g.fillRect (getLocalBounds().toFloat());
+}
+
+// ─────────────────────────────────────────────────────────────────
+// BypassButton — LED-style pill, on = active (DSP running), off = bypassed.
+// ─────────────────────────────────────────────────────────────────
+ManifoldEditor::BypassButton::BypassButton()
+    : juce::Button ("Bypass")
+{
+    setClickingTogglesState (true);
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+}
+
+void ManifoldEditor::BypassButton::paintButton (juce::Graphics& g, bool isMouseOver, bool /*isButtonDown*/)
+{
+    using LF = manifold::ui::ManifoldLookAndFeel;
+    const bool active = ! getToggleState();   // toggle = bypassed; visual semantic is reversed
+    const auto bounds = getLocalBounds().toFloat();
+
+    g.setColour (LF::plate0());
+    g.fillRoundedRectangle (bounds, 6.0f);
+    g.setColour (isMouseOver ? LF::plateLineStrong() : LF::plateLine());
+    g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 1.0f);
+
+    // LED dot
+    auto inner = bounds.reduced (8.0f, 5.0f);
+    auto ledArea = inner.removeFromLeft (14.0f);
+    const float ledR = 4.5f;
+    const auto ledCentre = ledArea.getCentre();
+    if (active)
+    {
+        const auto led = juce::Colour { 0xffb59cff };
+        // glow
+        g.setColour (led.withAlpha (0.5f));
+        g.fillEllipse (ledCentre.x - ledR * 1.6f, ledCentre.y - ledR * 1.6f,
+                       ledR * 3.2f, ledR * 3.2f);
+        g.setColour (led);
+        g.fillEllipse (ledCentre.x - ledR, ledCentre.y - ledR, ledR * 2.0f, ledR * 2.0f);
+    }
+    else
+    {
+        g.setColour (LF::plate3());
+        g.fillEllipse (ledCentre.x - ledR, ledCentre.y - ledR, ledR * 2.0f, ledR * 2.0f);
+    }
+
+    g.setColour (active ? LF::ink1() : LF::ink3());
+    g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+    g.drawFittedText (active ? "ACTIVE" : "BYPASS",
+                      inner.toNearestInt(),
+                      juce::Justification::centredLeft, 1);
+}
+
+// ─────────────────────────────────────────────────────────────────
+// SignalPathToggle — flips id::routing between Shape→Filter and Filter→Shape.
+// ─────────────────────────────────────────────────────────────────
+ManifoldEditor::SignalPathToggle::SignalPathToggle (juce::AudioProcessorValueTreeState& a)
+    : juce::Button ("SignalPath"),
+      apvts (a),
+      param (a.getParameter (manifold::params::id::routing)),
+      attach (*param, [this] (float newValue)
+      {
+          shapeFirst = newValue < 0.5f;
+          repaint();
+      })
+{
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    attach.sendInitialUpdate();
+}
+
+void ManifoldEditor::SignalPathToggle::clicked()
+{
+    // Flip via the parameter attachment so host automation/preset listeners stay coherent.
+    attach.setValueAsCompleteGesture (shapeFirst ? 1.0f : 0.0f);
+}
+
+void ManifoldEditor::SignalPathToggle::paintButton (juce::Graphics& g, bool isMouseOver, bool /*down*/)
+{
+    using LF = manifold::ui::ManifoldLookAndFeel;
+    const auto bounds = getLocalBounds().toFloat();
+
+    g.setColour (LF::plate0());
+    g.fillRoundedRectangle (bounds, 6.0f);
+    g.setColour (isMouseOver ? LF::plateLineStrong() : LF::plateLine());
+    g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 1.0f);
+
+    g.setColour (LF::ink3());
+    g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+
+    // Labels are fixed anchors — SHAPE always left, FILTER always right.
+    // Only the arrow direction changes to show signal flow.
+    const auto leftLabel  = juce::String ("SHAPE");
+    const auto rightLabel = juce::String ("FILTER");
+
+    auto inner = bounds.reduced (10.0f, 4.0f);
+    const auto leftBox  = inner.removeFromLeft  (44.0f);
+    const auto rightBox = inner.removeFromRight (44.0f);
+
+    g.drawFittedText (leftLabel,  leftBox.toNearestInt(),
+                      juce::Justification::centred, 1);
+    g.drawFittedText (rightLabel, rightBox.toNearestInt(),
+                      juce::Justification::centred, 1);
+
+    // Arrow in the middle — direction tracks shapeFirst so it always points toward the filter.
+    auto arrowBox = inner;
+    const float ay = arrowBox.getCentreY();
+    juce::Path arrow;
+    if (shapeFirst)
+    {
+        // Points right: Shape → Filter
+        arrow.startNewSubPath (arrowBox.getX() + 4.0f,        ay);
+        arrow.lineTo          (arrowBox.getRight() - 8.0f,     ay);
+        arrow.startNewSubPath (arrowBox.getRight() - 12.0f,    ay - 4.0f);
+        arrow.lineTo          (arrowBox.getRight() - 8.0f,     ay);
+        arrow.lineTo          (arrowBox.getRight() - 12.0f,    ay + 4.0f);
+    }
+    else
+    {
+        // Points left: Filter → Shape
+        arrow.startNewSubPath (arrowBox.getRight() - 4.0f,     ay);
+        arrow.lineTo          (arrowBox.getX() + 8.0f,         ay);
+        arrow.startNewSubPath (arrowBox.getX() + 12.0f,        ay - 4.0f);
+        arrow.lineTo          (arrowBox.getX() + 8.0f,         ay);
+        arrow.lineTo          (arrowBox.getX() + 12.0f,        ay + 4.0f);
+    }
+
+    const auto arrowColour = juce::Colour { 0xffb59cff };
+    g.setColour (arrowColour);
+    g.strokePath (arrow, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved,
+                                               juce::PathStrokeType::rounded));
+}
+
+// ─────────────────────────────────────────────────────────────────
+// ManifoldEditor
+// ─────────────────────────────────────────────────────────────────
 ManifoldEditor::ManifoldEditor (ManifoldProcessor& p)
     : AudioProcessorEditor (&p), processor (p), portrait (p)
 {
+    setLookAndFeel (&lookAndFeel);
+
+    addAndMakeVisible (wordmark);
     addAndMakeVisible (portrait);
     addAndMakeVisible (intensityKnob);
     addAndMakeVisible (speedKnob);
     addAndMakeVisible (warmthKnob);
 
-    advancedToggle.setClickingTogglesState (true);
-    advancedToggle.setColour (juce::TextButton::buttonColourId,   kBgPanel);
-    advancedToggle.setColour (juce::TextButton::buttonOnColourId, kVioletDim);
-    advancedToggle.setColour (juce::TextButton::textColourOffId,  kTextDim);
-    advancedToggle.setColour (juce::TextButton::textColourOnId,   kTextBright);
-    advancedToggle.onClick = [this]
-    {
-        advancedOpen = advancedToggle.getToggleState();
-        advancedPanel.setVisible (advancedOpen);
-        setSize (kEditorWidth, advancedOpen ? kEditorHeightExpanded : kEditorHeightCollapsed);
-    };
-    addAndMakeVisible (advancedToggle);
+    addAndMakeVisible (driveKnob);
+    addAndMakeVisible (cutoffKnob);
+    addAndMakeVisible (resonanceKnob);
+    addAndMakeVisible (morphKnob);
+    addAndMakeVisible (outputKnob);
 
-    advancedPanel.setVisible (false);
-    addChildComponent (advancedPanel);
+    addAndMakeVisible (shapePicker);
+    addAndMakeVisible (filterPicker);
+    addAndMakeVisible (bypassButton);
+    bypassButton.setTooltip ("Master bypass - when active, the input is passed through dry (no DSP).");
 
-    beaconsToggle.setClickingTogglesState (true);
-    beaconsToggle.setColour (juce::TextButton::buttonColourId,   kBgPanel);
-    beaconsToggle.setColour (juce::TextButton::buttonOnColourId, kVioletDim);
-    beaconsToggle.setColour (juce::TextButton::textColourOffId,  kTextDim);
-    beaconsToggle.setColour (juce::TextButton::textColourOnId,   kTextBright);
-    beaconsToggle.onClick = [this] { portrait.setBeaconsVisible (beaconsToggle.getToggleState()); };
-    addAndMakeVisible (beaconsToggle);
+    intensityKnob .slider.setTooltip ("Depth of chaos motion (Lorenz rho). Low = gentle wobble; high = aggressive regime-switching.");
+    speedKnob     .slider.setTooltip ("Orbit rate of the chaos core. Low = slow drift; high = frantic motion.");
+    warmthKnob    .slider.setTooltip ("Smooths the chaos mod signals AND tilts the output spectrum warmer. 0 = raw motion, flat tone; higher = slower motion, darker tone.");
+    driveKnob     .slider.setTooltip ("Gain into the shaper. Each SHAPE curve responds differently; chaos modulates drive on top.");
+    cutoffKnob    .slider.setTooltip ("Filter cutoff (Hz). Repurposed as pitch for Tuned Comb.");
+    resonanceKnob .slider.setTooltip ("Filter resonance / feedback. High values self-oscillate - chaos can push it there.");
+    morphKnob     .slider.setTooltip ("SVF: LP <-> BP <-> HP blend. Moog/Diode: 4-pole <-> 2-pole tonal slope. Comb: feedback-path brightness.");
+    outputKnob    .slider.setTooltip ("Post-filter output gain (dB).");
+    shapePicker   .setTooltip ("Transfer curve (waveshaper). Click to choose.");
+    filterPicker  .setTooltip ("Resonant filter model. Click to choose.");
 
-    intensityKnob       .slider.setTooltip ("Depth of chaos motion (Lorenz rho). Low = gentle wobble; high = aggressive regime-switching.");
-    speedKnob           .slider.setTooltip ("Orbit rate of the chaos core. Low = slow drift; high = frantic motion.");
-    warmthKnob          .slider.setTooltip ("Smooths the chaos mod signals AND tilts the output spectrum warmer. 0 = raw motion, flat tone; higher = slower motion, darker tone.");
-    advancedPanel.drive .slider.setTooltip ("Gain into the shaper. Each SHAPE curve responds differently; chaos modulates drive on top.");
-    advancedPanel.cutoff.slider.setTooltip ("Filter cutoff (Hz). Repurposed as pitch for Tuned Comb.");
-    advancedPanel.resonance.slider.setTooltip ("Filter resonance / feedback. High values self-oscillate — chaos can push it there.");
-    advancedPanel.morph .slider.setTooltip ("SVF: LP <-> BP <-> HP blend. Moog/Diode: 4-pole <-> 2-pole tonal slope. Comb: feedback-path brightness.");
-    advancedPanel.output.slider.setTooltip ("Post-filter output gain (dB).");
-    advancedPanel.filterCombo.setTooltip ("Resonant filter model. Each type has its own character — Morph behaves differently per filter.");
-    advancedPanel.routeCombo.setTooltip ("Signal path. Shape -> Filter: harmonics generated then tamed (classic). Filter -> Shape: filter sculpts input first, then shaping reacts to cleaner signal.");
-    advancedPanel.shaperCombo.setTooltip ("Transfer curve. Fold = triangle wavefold; SoftClip = tanh; HardClip = brick-wall; Rectify = octave-up; Sine = smooth wrap; TubeAsym = even+odd harmonics; ChebyT3/T5 = pure 3rd/5th harmonic on a sine.");
-
-    // Engine toggle row.
+    // Engine toggle row — six EngineButtons with per-engine hue and glyph.
     using namespace manifold::params;
+    static constexpr juce::uint32 kEngineHues[kNumChaosEngines] = {
+        0xffb59cff,  // Lorenz  — violet
+        0xff7ad6ff,  // Thomas  — cyan
+        0xff8effa0,  // Rossler — green
+        0xffffb870,  // Chua    — orange
+        0xff8aa8ff,  // Aizawa  — blue
+        0xffff8eb6,  // Henon   — magenta/pink
+    };
+    engineButtons.reserve (kNumChaosEngines);
     for (int i = 0; i < kNumChaosEngines; ++i)
     {
-        auto& btn = engineToggles[(size_t) i];
-        btn.setButtonText (kChaosEngineNames[i]);
-        btn.setClickingTogglesState (true);
-        btn.setColour (juce::TextButton::buttonColourId,   kBgPanel);
-        btn.setColour (juce::TextButton::buttonOnColourId, kVioletDim);
-        btn.setColour (juce::TextButton::textColourOffId,  kTextDim);
-        btn.setColour (juce::TextButton::textColourOnId,   kTextBright);
-        addAndMakeVisible (btn);
+        auto btn = std::make_unique<manifold::ui::EngineButton> (
+            i, juce::String (kChaosEngineNames[i]), juce::Colour (kEngineHues[i]));
+        btn->onStateChange = [this] { updateBlendEnabled(); };
+        addAndMakeVisible (*btn);
+        engineButtons.push_back (std::move (btn));
     }
 
+    blendKnob.slider.setTooltip ("Hybridisation depth across active chaos engines. 0 = primary engine only; 1 = full equal-weight mix. Disabled when fewer than 2 engines are active.");
+    addAndMakeVisible (blendKnob);
+
     auto& apvts = processor.getAPVTS();
+
+    // Slider attachments.
     intensityAttach = std::make_unique<SliderAttachment> (apvts, id::intensity, intensityKnob.slider);
     speedAttach     = std::make_unique<SliderAttachment> (apvts, id::speed,     speedKnob.slider);
     warmthAttach    = std::make_unique<SliderAttachment> (apvts, id::warmth,    warmthKnob.slider);
-    driveAttach     = std::make_unique<SliderAttachment> (apvts, id::drive,     advancedPanel.drive.slider);
-    cutoffAttach    = std::make_unique<SliderAttachment> (apvts, id::cutoff,    advancedPanel.cutoff.slider);
-    resonanceAttach = std::make_unique<SliderAttachment> (apvts, id::resonance, advancedPanel.resonance.slider);
-    morphAttach     = std::make_unique<SliderAttachment> (apvts, id::morph,     advancedPanel.morph.slider);
-    outputAttach    = std::make_unique<SliderAttachment> (apvts, id::output,    advancedPanel.output.slider);
+    driveAttach     = std::make_unique<SliderAttachment> (apvts, id::drive,     driveKnob.slider);
+    cutoffAttach    = std::make_unique<SliderAttachment> (apvts, id::cutoff,    cutoffKnob.slider);
+    resonanceAttach = std::make_unique<SliderAttachment> (apvts, id::resonance, resonanceKnob.slider);
+    morphAttach     = std::make_unique<SliderAttachment> (apvts, id::morph,     morphKnob.slider);
+    outputAttach    = std::make_unique<SliderAttachment> (apvts, id::output,    outputKnob.slider);
+    blendAttach     = std::make_unique<SliderAttachment> (apvts, id::blend,     blendKnob.slider);
+    bypassAttach    = std::make_unique<ButtonAttachment> (apvts, id::bypass,    bypassButton);
+
+    // Watch bypass param — show/hide the overlay component (which sits above all children).
+    if (auto* bp = apvts.getParameter (id::bypass))
+    {
+        bypassParamWatch = std::make_unique<juce::ParameterAttachment> (*bp,
+            [this] (float v)
+            {
+                isBypassed = v > 0.5f;
+                bypassOverlay.setVisible (isBypassed);
+            });
+        bypassParamWatch->sendInitialUpdate();
+    }
+
+    // Overlay added last (topmost z-order) but NOT made visible — visibility is driven
+    // entirely by the param watch above so the default non-bypassed state is correct.
+    addChildComponent (bypassOverlay);
+
     for (int i = 0; i < kNumChaosEngines; ++i)
         engineAttachments[(size_t) i] = std::make_unique<ButtonAttachment> (
-            apvts, kChaosEngineParamIds[i], engineToggles[(size_t) i]);
+            apvts, kChaosEngineParamIds[i], *engineButtons[(size_t) i]);
+    updateBlendEnabled();
 
-    filterAttach    = std::make_unique<ComboBoxAttachment> (apvts, id::filterType, advancedPanel.filterCombo);
-    routeAttach     = std::make_unique<ComboBoxAttachment> (apvts, id::routing,    advancedPanel.routeCombo);
-    shaperAttach    = std::make_unique<ComboBoxAttachment> (apvts, id::shaperType, advancedPanel.shaperCombo);
+    // Picker cards: subscribe to the underlying choice params and refresh display.
+    auto* filterParam = apvts.getParameter (id::filterType);
+    auto* shaperParam = apvts.getParameter (id::shaperType);
+    filterPickerAttach = std::make_unique<juce::ParameterAttachment> (
+        *filterParam,
+        [this, filterParam] (float)
+        {
+            const int idx = (int) filterParam->convertFrom0to1 (filterParam->getValue());
+            const auto choices = manifold::params::filterTypeChoices();
+            filterPicker.setOptionName (choices[juce::jlimit (0, choices.size() - 1, idx)]);
+        });
+    shaperPickerAttach = std::make_unique<juce::ParameterAttachment> (
+        *shaperParam,
+        [this, shaperParam] (float)
+        {
+            const int idx = (int) shaperParam->convertFrom0to1 (shaperParam->getValue());
+            const auto choices = manifold::params::shaperTypeChoices();
+            shapePicker.setOptionName (choices[juce::jlimit (0, choices.size() - 1, idx)]);
+        });
+    filterPickerAttach->sendInitialUpdate();
+    shaperPickerAttach->sendInitialUpdate();
 
-    setSize (kEditorWidth, kEditorHeightCollapsed);
+    // Signal-path toggle — built once apvts is reachable.
+    sigPath = std::make_unique<SignalPathToggle> (apvts);
+    addAndMakeVisible (*sigPath);
+
+    setSize (kEditorWidth, kEditorHeight);
+}
+
+ManifoldEditor::~ManifoldEditor()
+{
+    setLookAndFeel (nullptr);
+}
+
+void ManifoldEditor::updateBlendEnabled()
+{
+    int active = 0;
+    for (auto& b : engineButtons)
+        if (b->getToggleState()) ++active;
+
+    const bool enabled = active >= 2;
+    blendKnob.setEnabled (enabled);
+    blendKnob.setAlpha   (enabled ? 1.0f : 0.4f);
+}
+
+void ManifoldEditor::refreshPickerNames()
+{
+    if (filterPickerAttach) filterPickerAttach->sendInitialUpdate();
+    if (shaperPickerAttach) shaperPickerAttach->sendInitialUpdate();
 }
 
 void ManifoldEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (kBg);
+    using LF = manifold::ui::ManifoldLookAndFeel;
+    g.fillAll (LF::plate1());
 
-    auto headerArea = getLocalBounds().removeFromTop (44);
-    g.setColour (kViolet);
-    g.setFont (juce::FontOptions (20.0f, juce::Font::bold));
-    g.drawFittedText ("MANIFOLD", headerArea.reduced (16, 0), juce::Justification::left, 1);
+    // Header strip — gradient + bottom hairline.
+    auto header = getLocalBounds().removeFromTop (kHeaderH);
+    {
+        juce::ColourGradient hg (LF::plate2(),
+                                 header.getX(), (float) header.getY(),
+                                 LF::plate1(),
+                                 header.getX(), (float) header.getBottom(),
+                                 false);
+        g.setGradientFill (hg);
+        g.fillRect (header);
+    }
+    g.setColour (LF::plateLine());
+    g.drawHorizontalLine (header.getBottom() - 1, 0.0f, (float) getWidth());
 
-    g.setColour (kTextDim);
-    g.setFont (juce::FontOptions (10.0f));
-    g.drawFittedText (kBuildTag, headerArea.reduced (130, 0),
+    g.setColour (LF::ink4());
+    g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+    auto vbox = header.withTrimmedLeft (220).withTrimmedRight (240);
+    g.drawFittedText (kBuildTag, vbox, juce::Justification::centredLeft, 1);
+
+    // Footer strip — just a divider + placeholder labels for now (no live data).
+    auto footer = getLocalBounds().removeFromBottom (kFooterH);
+    g.setColour (LF::plate0());
+    g.fillRect (footer);
+    g.setColour (LF::plateLine());
+    g.drawHorizontalLine (footer.getY(), 0.0f, (float) getWidth());
+
+    g.setColour (LF::ink4());
+    g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+    g.drawFittedText ("MANIFOLD", footer.reduced (16, 0).withWidth (120),
                       juce::Justification::centredLeft, 1);
+    g.drawFittedText (kBuildTag, footer.reduced (16, 0),
+                      juce::Justification::centredRight, 1);
+
+    // Bypass visual state is handled by BypassOverlay (a child component on top of
+    // everything, including the OpenGL portrait). Nothing to draw here for bypass.
 }
 
 void ManifoldEditor::resized()
@@ -230,26 +438,60 @@ void ManifoldEditor::resized()
     using namespace manifold::params;
     auto b = getLocalBounds();
 
-    // Header strip + advanced toggle live at the top.
-    auto header = b.removeFromTop (44);
-    advancedToggle.setBounds (header.removeFromRight (110).reduced (8, 10));
-    beaconsToggle .setBounds (header.removeFromRight (100).reduced (8, 10));
+    // Header
+    auto header = b.removeFromTop (kHeaderH);
+    wordmark.setBounds (header.removeFromLeft (210).reduced (16, 8));
+    bypassButton.setBounds (header.removeFromRight (104).reduced (12, 10));
 
-    if (advancedOpen)
-        advancedPanel.setBounds (b.removeFromBottom (kAdvancedPanelHeight));
+    // Footer
+    b.removeFromBottom (kFooterH);
 
-    auto knobRow = b.removeFromBottom (140);
+    // Secondary knob row (5 across) at the bottom.
+    auto secondary = b.removeFromBottom (kSecondaryRowH);
+    {
+        const int n = 5;
+        const int w = secondary.getWidth() / n;
+        driveKnob    .setBounds (secondary.removeFromLeft (w).reduced (10, 4));
+        cutoffKnob   .setBounds (secondary.removeFromLeft (w).reduced (10, 4));
+        resonanceKnob.setBounds (secondary.removeFromLeft (w).reduced (10, 4));
+        morphKnob    .setBounds (secondary.removeFromLeft (w).reduced (10, 4));
+        outputKnob   .setBounds (secondary.reduced (10, 4));
+    }
 
-    // Engine toggle row sits between header and portrait.
-    auto engRow = b.removeFromTop (kEngineRowHeight);
+    // Routing strip (Shape | sigpath | Filter).
+    auto routing = b.removeFromBottom (kRoutingRowH).reduced (22, 10);
+    const int sigPathW = 150;
+    const int gap = 14;
+    const int pickerW = (routing.getWidth() - sigPathW - 2 * gap) / 2;
+    shapePicker.setBounds  (routing.removeFromLeft (pickerW));
+    routing.removeFromLeft (gap);
+    if (sigPath != nullptr)
+        sigPath->setBounds (routing.removeFromLeft (sigPathW).reduced (0, 8));
+    routing.removeFromLeft (gap);
+    filterPicker.setBounds (routing);
+
+    // Macros (3 big knobs).
+    auto macros = b.removeFromBottom (kMacroRowH);
+    {
+        const int w = macros.getWidth() / 3;
+        intensityKnob.setBounds (macros.removeFromLeft (w).reduced (16, 6));
+        speedKnob    .setBounds (macros.removeFromLeft (w).reduced (16, 6));
+        warmthKnob   .setBounds (macros.reduced (16, 6));
+    }
+
+    // Engine row + BLEND knob (between header and portrait).
+    auto engRow = b.removeFromTop (kEngineRowH);
+    const int blendW = 76;
+    auto blendArea = engRow.removeFromRight (blendW);
+    blendKnob.setBounds (blendArea.reduced (4, 4));
+
     const int btnW = engRow.getWidth() / kNumChaosEngines;
-    for (int i = 0; i < kNumChaosEngines; ++i)
-        engineToggles[(size_t) i].setBounds (engRow.removeFromLeft (btnW).reduced (4, 8));
+    for (int i = 0; i < (int) engineButtons.size(); ++i)
+        engineButtons[(size_t) i]->setBounds (engRow.removeFromLeft (btnW).reduced (4, 6));
 
+    // Portrait fills whatever's left between the engine row and the macro row.
     portrait.setBounds (b);
 
-    const int knobW = knobRow.getWidth() / 3;
-    intensityKnob.setBounds (knobRow.removeFromLeft (knobW).reduced (8));
-    speedKnob    .setBounds (knobRow.removeFromLeft (knobW).reduced (8));
-    warmthKnob   .setBounds (knobRow.reduced (8));
+    // Overlay covers everything below the header (bypass button stays accessible).
+    bypassOverlay.setBounds (getLocalBounds().withTrimmedTop (kHeaderH).withTrimmedBottom (kFooterH));
 }

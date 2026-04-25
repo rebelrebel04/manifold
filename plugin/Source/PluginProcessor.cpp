@@ -68,6 +68,11 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     // Snapshot params for this block — parameter changes are smooth enough at block
     // boundaries for this DSP; per-sample reads would be wasteful.
     using namespace manifold::params;
+
+    // Master bypass flag — audio DSP is skipped but chaos engines keep stepping so
+    // the portrait stays live. The per-sample loop uses 'continue' after the FIFO write.
+    const bool isBypassed = apvts.getRawParameterValue (id::bypass)->load() > 0.5f;
+
     const auto filterType = (FilterType) (int) apvts.getRawParameterValue (id::filterType)->load();
     const auto routing    = (Routing)    (int) apvts.getRawParameterValue (id::routing)->load();
 
@@ -79,6 +84,11 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     const bool useHenon   = apvts.getRawParameterValue (id::chaosHenon)  ->load() > 0.5f;
     const int  activeCount = (int)useLorenz + (int)useThomas + (int)useRossler
                            + (int)useChua   + (int)useAizawa + (int)useHenon;
+
+    // Blend weight — lerps modulation between primary engine and equal-weight average.
+    // Identity at activeCount==1 (lerp endpoints equal), so blend has no effect there.
+    const float blendW = juce::jlimit (0.0f, 1.0f,
+                                       apvts.getRawParameterValue (id::blend)->load());
     const auto shaperType = (manifold::dsp::shaper::Type) (int) apvts.getRawParameterValue (id::shaperType)->load();
     const float intensity = apvts.getRawParameterValue (id::intensity)->load();
     const float speedKnob = apvts.getRawParameterValue (id::speed)->load();
@@ -115,13 +125,18 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
 
     for (int i = 0; i < numSamples; ++i)
     {
-        // Step all active engines and average their normalized states.
-        // N=1 is identical to the old single-engine behavior.
+        // Step all active engines and accumulate normalised states. We track both
+        // the running sum (→ average for full-blend) and the *primary* state (the
+        // first active engine, for blend=0). The final modulation is a lerp between
+        // primary and average, scaled by blendW.
         double ax = 0.0, ay = 0.0, az = 0.0;
-        const int n_active = activeCount > 0 ? activeCount : 1;  // guard div-by-zero
+        double px = 0.0, py = 0.0, pz = 0.0;
+        bool primarySet = false;
+        const int n_active = activeCount > 0 ? activeCount : 1;
         auto accum = [&] (manifold::chaos::Lorenz::Sample s)
         {
             ax += s.x; ay += s.y; az += s.z;
+            if (! primarySet) { px = s.x; py = s.y; pz = s.z; primarySet = true; }
         };
         if (useLorenz)  { auto r = lorenz.step  (currentSampleRate); accum (manifold::chaos::Lorenz::normalize  (r)); }
         if (useThomas)  { auto r = thomas.step  (currentSampleRate); auto nt = manifold::chaos::Thomas::normalize  (r); accum ({nt.x, nt.y, nt.z}); }
@@ -129,11 +144,12 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
         if (useChua)    { auto r = chua.step    (currentSampleRate); auto nc = manifold::chaos::Chua::normalize    (r); accum ({nc.x, nc.y, nc.z}); }
         if (useAizawa)  { auto r = aizawa.step  (currentSampleRate); auto na = manifold::chaos::Aizawa::normalize  (r); accum ({na.x, na.y, na.z}); }
         if (useHenon)   { auto r = henon.step   (currentSampleRate); auto nh = manifold::chaos::Henon::normalize   (r); accum ({nh.x, nh.y, nh.z}); }
-        // If nothing is selected, engines still stepped above (0 accumulators), give silence.
+
+        const double avx = ax / n_active, avy = ay / n_active, avz = az / n_active;
         const manifold::chaos::Lorenz::Sample n {
-            ax / n_active,
-            ay / n_active,
-            az / n_active
+            px + (avx - px) * blendW,
+            py + (avy - py) * blendW,
+            pz + (avz - pz) * blendW
         };
 
         modSmoothedX += smoothA * (static_cast<float> (n.x) - modSmoothedX);
@@ -151,6 +167,10 @@ void ManifoldProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
                 portraitBuf[(size_t) s1] = { modSmoothedX, modSmoothedY, modSmoothedZ };
             portraitFifo.finishedWrite (sz1);
         }
+
+        // Bypass: chaos has already stepped and the portrait FIFO is written above,
+        // so the visualiser stays live. Skip audio DSP; leave the sample untouched.
+        if (isBypassed) continue;
 
         const float mx    = 0.5f * (modSmoothedX + 1.0f);                     // positive [0,1]
         const float my    = 0.5f * (modSmoothedY + 1.0f);                     // positive [0,1]

@@ -43,6 +43,9 @@ target_sources(Manifold PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/ui/PhasePortrait.cpp
+    Source/ui/ManifoldLookAndFeel.cpp
+    Source/ui/ManifoldWordmark.cpp
+    Source/ui/EngineButton.cpp
 )
 
 target_compile_definitions(Manifold PUBLIC

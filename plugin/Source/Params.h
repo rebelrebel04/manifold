@@ -26,6 +26,8 @@ namespace id
     inline constexpr const char* chaosHenon   = "chaosHenon";
     inline constexpr const char* routing    = "routing";
     inline constexpr const char* shaperType = "shaperType";
+    inline constexpr const char* blend      = "blend";
+    inline constexpr const char* bypass     = "bypass";
 }
 
 enum class FilterType : int { SVF = 0, MoogLadder = 1, DiodeLadder = 2, TunedComb = 3 };
@@ -105,6 +107,16 @@ inline juce::AudioProcessorValueTreeState::ParameterLayout makeLayout()
     p.push_back (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { id::shaperType, 1 }, "Shaper",
         shaperTypeChoices(), (int) ShaperType::Fold));
+
+    // BLEND — lerps the chaos modulation between primary engine only (0)
+    // and full equal-weight mix of all active engines (1). No effect when
+    // only one engine is active. Default 1.0 (full hybrid).
+    p.push_back (std::make_unique<APF> (juce::ParameterID { id::blend, 1 },
+                                        "Blend", Range { 0.0f, 1.0f }, 1.0f));
+
+    // Master bypass — when true, dry-pass the input and skip all DSP.
+    p.push_back (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { id::bypass, 1 }, "Bypass", false));
 
     return { p.begin(), p.end() };
 }
