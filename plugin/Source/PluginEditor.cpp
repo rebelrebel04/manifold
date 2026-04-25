@@ -9,7 +9,7 @@ namespace
     constexpr int kAdvancedPanelHeight   = 210;
     constexpr int kEditorHeightExpanded = kEditorHeightCollapsed + kAdvancedPanelHeight;
 
-    constexpr const char* kBuildTag = "v0.13.0";
+    constexpr const char* kBuildTag = "v0.14.0";
 
     const juce::Colour kBg          (0xff05050a);
     const juce::Colour kBgPanel     (0xff0d0d18);

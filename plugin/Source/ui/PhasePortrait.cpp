@@ -6,29 +6,71 @@ namespace manifold::ui
 
 namespace
 {
-    struct FilterPalette
-    {
-        float trailR, trailG, trailB;
-        float beaconR, beaconG, beaconB;
-        juce::Colour label;
+    // Hue angles (degrees) for each engine, in kChaosEngineParamIds order.
+    constexpr float kEngineHues[manifold::params::kNumChaosEngines] = {
+        270.0f,   // Lorenz  — violet
+        185.0f,   // Thomas  — electric cyan
+        135.0f,   // Rossler — acid green
+         25.0f,   // Chua    — electric orange
+        210.0f,   // Aizawa  — deep blue
+        315.0f,   // Henon   — hot magenta
     };
 
-    FilterPalette paletteFor (manifold::params::FilterType t) noexcept
+    // Pure HSV(h, 1, 1) → RGB, then lifted into HDR "electric" range.
+    // kGlow sets the luminous floor so dim channels still contribute to bloom.
+    struct ElectricPalette { float tr, tg, tb, br, bg, bb; juce::Colour label; };
+
+    ElectricPalette electricFromHue (float hueDeg) noexcept
     {
-        using FT = manifold::params::FilterType;
-        switch (t)
+        float h = std::fmod (hueDeg, 360.0f);
+        if (h < 0.0f) h += 360.0f;
+        const float hh = h / 60.0f;
+        const int   si = (int) hh;
+        const float f  = hh - (float) si;
+        float r = 0.0f, g = 0.0f, b = 0.0f;
+        switch (si % 6)
         {
-            case FT::MoogLadder:  return { 2.6f, 1.2f, 0.3f,  3.0f, 1.6f, 0.5f, juce::Colour (0xffffb870) };
-            case FT::DiodeLadder: return { 0.5f, 2.4f, 0.7f,  0.8f, 2.8f, 1.0f, juce::Colour (0xff8effa0) };
-            case FT::TunedComb:   return { 0.3f, 1.8f, 2.6f,  0.5f, 2.2f, 3.0f, juce::Colour (0xff7ad6ff) };
-            case FT::SVF:
-            default:              return { 1.4f, 0.78f, 2.6f, 1.8f, 1.1f, 3.0f, juce::Colour (0xffb59cff) };
+            case 0: r = 1.0f; g = f;    b = 0.0f; break;
+            case 1: r = 1.0f-f; g = 1.0f; b = 0.0f; break;
+            case 2: r = 0.0f; g = 1.0f; b = f;    break;
+            case 3: r = 0.0f; g = 1.0f-f; b = 1.0f; break;
+            case 4: r = f;    g = 0.0f; b = 1.0f; break;
+            case 5: r = 1.0f; g = 0.0f; b = 1.0f-f; break;
         }
+        // Trail: glow floor 0.65, peak 2.5. Beacon: slightly brighter.
+        constexpr float kTGlow = 0.65f, kTPeak = 2.5f;
+        constexpr float kBGlow = 0.80f, kBPeak = 3.1f;
+        const float tr = kTGlow + (kTPeak - kTGlow) * r;
+        const float tg = kTGlow + (kTPeak - kTGlow) * g;
+        const float tb = kTGlow + (kTPeak - kTGlow) * b;
+        const float br = kBGlow + (kBPeak - kBGlow) * r;
+        const float bg = kBGlow + (kBPeak - kBGlow) * g;
+        const float bb = kBGlow + (kBPeak - kBGlow) * b;
+        // Label: HSV(h, 0.55, 1.0) normalised to 8-bit, slightly desaturated for legibility.
+        const float lr = 0.45f + 0.55f * r, lg = 0.45f + 0.55f * g, lb = 0.45f + 0.55f * b;
+        return { tr, tg, tb, br, bg, bb,
+                 juce::Colour::fromFloatRGBA (lr, lg, lb, 1.0f) };
     }
 
-    manifold::params::FilterType readFilterType (juce::AudioProcessorValueTreeState& apvts) noexcept
+    // Circular mean of active engine hues → blended hue angle in [0, 360).
+    float blendedHueDeg (juce::AudioProcessorValueTreeState& apvts) noexcept
     {
-        return (manifold::params::FilterType) (int) apvts.getRawParameterValue (manifold::params::id::filterType)->load();
+        float cx = 0.0f, cy = 0.0f;
+        using namespace manifold::params;
+        for (int i = 0; i < kNumChaosEngines; ++i)
+        {
+            if (apvts.getRawParameterValue (kChaosEngineParamIds[i])->load() > 0.5f)
+            {
+                const float rad = kEngineHues[i] * (3.14159265f / 180.0f);
+                cx += std::cos (rad);
+                cy += std::sin (rad);
+            }
+        }
+        if (cx == 0.0f && cy == 0.0f)
+            return kEngineHues[0]; // fallback: Lorenz violet
+        float h = std::atan2 (cy, cx) * (180.0f / 3.14159265f);
+        if (h < 0.0f) h += 360.0f;
+        return h;
     }
 }
 
@@ -229,7 +271,7 @@ void PhasePortrait::paint (juce::Graphics& g)
                                     (1.0f - (ny * 0.5f + 0.5f)) * H };
     };
 
-    const auto pal = paletteFor (readFilterType (processor.getAPVTS()));
+    const auto pal = electricFromHue (blendedHueDeg (processor.getAPVTS()));
     g.setColour (pal.label);
     g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
 
@@ -501,7 +543,7 @@ void PhasePortrait::renderOpenGL()
     gl::glClearColor (0.02f, 0.02f, 0.04f, 1.0f);
     gl::glClear (gl::GL_COLOR_BUFFER_BIT);
 
-    const auto pal = paletteFor (readFilterType (processor.getAPVTS()));
+    const auto pal = electricFromHue (blendedHueDeg (processor.getAPVTS()));
 
     if (trailCount >= 2)
     {
@@ -509,7 +551,7 @@ void PhasePortrait::renderOpenGL()
         gl::glBlendFunc (gl::GL_ONE, gl::GL_ONE);  // additive
 
         trailShader->use();
-        trailShader->setUniform ("trailColor", pal.trailR, pal.trailG, pal.trailB);
+        trailShader->setUniform ("trailColor", pal.tr, pal.tg, pal.tb);
         gl::glBindVertexArray (trailVao);
         gl::glDrawArrays (gl::GL_TRIANGLE_STRIP, 0, trailCount * 2);
         gl::glBindVertexArray (0);
@@ -519,7 +561,7 @@ void PhasePortrait::renderOpenGL()
             // Beacons drawn into the same scene FBO so they feed the bloom pass.
             gl::glEnable (gl::GL_PROGRAM_POINT_SIZE);
             beaconShader->use();
-            beaconShader->setUniform ("beaconColor", pal.beaconR, pal.beaconG, pal.beaconB);
+            beaconShader->setUniform ("beaconColor", pal.br, pal.bg, pal.bb);
             gl::glBindVertexArray (beaconVao);
             gl::glDrawArrays (gl::GL_POINTS, 0, kNumBeacons);
             gl::glBindVertexArray (0);
