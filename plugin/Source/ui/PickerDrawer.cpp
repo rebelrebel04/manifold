@@ -27,11 +27,12 @@ void PickerDrawer::configure (const juce::String&       title,
                                std::function<void(int)>   onSelected,
                                int                        selectedIndex)
 {
-    title_       = title;
-    options_     = std::move (options);
-    onSelected_  = std::move (onSelected);
-    selectedIdx_ = selectedIndex;
-    hoverIdx_    = -1;
+    title_        = title;
+    options_      = std::move (options);
+    onSelected_   = std::move (onSelected);
+    selectedIdx_  = selectedIndex;
+    hoverIdx_     = -1;
+    scrollOffset_ = 0;
     resized();
     repaint();
 }
@@ -99,7 +100,7 @@ void PickerDrawer::applyAnimTransform()
 // ─────────────────────────────────────────────────────────────────────────────
 juce::Rectangle<int> PickerDrawer::cardBounds (int i) const noexcept
 {
-    return { 0, kHeaderH + i * kCardH, getWidth(), kCardH };
+    return { 0, kHeaderH + i * kCardH - scrollOffset_, getWidth(), kCardH };
 }
 
 void PickerDrawer::resized()
@@ -144,94 +145,125 @@ void PickerDrawer::paint (juce::Graphics& g)
                           juce::Justification::centredLeft, 1);
     }
 
-    // Option cards.
-    for (int i = 0; i < (int) options_.size(); ++i)
+    // Option cards — clipped to the scrollable area below the header.
     {
-        const auto& opt      = options_[(size_t) i];
-        const auto  card     = cardBounds (i).toFloat();
-        const bool  selected = (i == selectedIdx_);
-        const bool  hovered  = (i == hoverIdx_) && ! selected;
-        const bool  isLast   = (i == (int) options_.size() - 1);
+        juce::Graphics::ScopedSaveState clip (g);
+        g.reduceClipRegion (0, kHeaderH, getWidth(), getHeight() - kHeaderH);
 
-        // ── Card background ──────────────────────────────────────────────
-        if (selected)
+        for (int i = 0; i < (int) options_.size(); ++i)
         {
-            // Richer gradient: plate3 top -> plate2 mid -> slight plate3 tint bottom
-            juce::ColourGradient bg (LF::plate3(), card.getX(), card.getY(),
-                                     LF::plate2().brighter (0.04f), card.getX(), card.getBottom(), false);
-            g.setGradientFill (bg);
-            g.fillRect (card);
+            const auto& opt      = options_[(size_t) i];
+            const auto  card     = cardBounds (i).toFloat();
+            const bool  selected = (i == selectedIdx_);
+            const bool  hovered  = (i == hoverIdx_) && ! selected;
+            const bool  isLast   = (i == (int) options_.size() - 1);
 
-            // Accent left-edge bar (3 px, full card height).
-            g.setColour (juce::Colour (kAccentArgb).withAlpha (0.85f));
-            g.fillRect (card.withWidth (3.0f));
+            // Skip cards that are completely above or below the visible area.
+            if (card.getBottom() < (float) kHeaderH || card.getY() > (float) getHeight())
+                continue;
 
-            // Accent outline — subtle border around the whole card.
-            g.setColour (juce::Colour (kAccentArgb).withAlpha (0.22f));
-            g.drawRect (card.reduced (0.5f), 1.0f);
+            // ── Card background ──────────────────────────────────────────────
+            if (selected)
+            {
+                // Richer gradient: plate3 top -> plate2 mid -> slight plate3 tint bottom
+                juce::ColourGradient bg (LF::plate3(), card.getX(), card.getY(),
+                                         LF::plate2().brighter (0.04f), card.getX(), card.getBottom(), false);
+                g.setGradientFill (bg);
+                g.fillRect (card);
+
+                // Accent left-edge bar (3 px, full card height).
+                g.setColour (juce::Colour (kAccentArgb).withAlpha (0.85f));
+                g.fillRect (card.withWidth (3.0f));
+
+                // Accent outline — subtle border around the whole card.
+                g.setColour (juce::Colour (kAccentArgb).withAlpha (0.22f));
+                g.drawRect (card.reduced (0.5f), 1.0f);
+            }
+            else if (hovered)
+            {
+                // Mild brightness lift for hover.
+                g.setColour (LF::plate2().brighter (0.12f));
+                g.fillRect (card);
+            }
+            else
+            {
+                g.setColour (LF::plate2());
+                g.fillRect (card);
+            }
+
+            // ── Separator line ───────────────────────────────────────────────
+            if (! isLast)
+            {
+                g.setColour (LF::plateLine());
+                g.drawHorizontalLine ((int) card.getBottom() - 1,
+                                      card.getX() + 12.0f, card.getRight() - 12.0f);
+            }
+
+            // ── Diagram area (left side) ─────────────────────────────────────
+            const auto diagRect = card.withWidth  ((float) kDiagramW)
+                                      .withHeight (card.getHeight() - 2.0f * (float) kCardPad)
+                                      .translated ((float) kCardPad, (float) kCardPad);
+
+            if (opt.drawDiagram)
+                opt.drawDiagram (g, diagRect);
+
+            // ── Name + description (right of diagram) ────────────────────────
+            const float checkW  = selected ? 28.0f : 0.0f;
+            const float textX   = card.getX() + (float) kDiagramW + 2.0f * (float) kCardPad;
+            const float textW   = card.getRight() - textX - (float) kCardPad - checkW;
+
+            g.setColour (selected ? LF::ink1() : LF::ink2());
+            g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+            g.drawFittedText (opt.name,
+                              (int) textX, (int) card.getY() + kCardPad,
+                              (int) textW, 18,
+                              juce::Justification::centredLeft, 1);
+
+            // Description: 11 pt, ink2 (selected) or ink3 (unselected)
+            g.setColour (selected ? LF::ink2() : LF::ink3());
+            g.setFont (juce::FontOptions (11.0f, juce::Font::plain));
+            g.drawFittedText (opt.description,
+                              (int) textX, (int) card.getY() + kCardPad + 20,
+                              (int) textW, (int) card.getHeight() - kCardPad * 2 - 20,
+                              juce::Justification::topLeft, 3);
+
+            // ── Checkmark for selected option ────────────────────────────────
+            if (selected)
+            {
+                const float cx = card.getRight() - 18.0f;
+                const float cy = card.getCentreY();
+                juce::Path check;
+                check.startNewSubPath (cx - 6.0f, cy - 0.5f);
+                check.lineTo          (cx - 2.0f, cy + 4.5f);
+                check.lineTo          (cx + 6.0f, cy - 5.5f);
+                g.setColour (juce::Colour (kAccentArgb));
+                g.strokePath (check, juce::PathStrokeType (2.0f,
+                                                            juce::PathStrokeType::curved,
+                                                            juce::PathStrokeType::rounded));
+            }
         }
-        else if (hovered)
-        {
-            // Mild brightness lift for hover.
-            g.setColour (LF::plate2().brighter (0.12f));
-            g.fillRect (card);
-        }
-        else
-        {
-            g.setColour (LF::plate2());
-            g.fillRect (card);
-        }
+    } // clip region released here
 
-        // ── Separator line ───────────────────────────────────────────────
-        if (! isLast)
-        {
-            g.setColour (LF::plateLine());
-            g.drawHorizontalLine ((int) card.getBottom() - 1,
-                                  card.getX() + 12.0f, card.getRight() - 12.0f);
-        }
+    // ── Scroll thumb — drawn on top of cards, visible only when content overflows ──
+    const int ms = maxScroll();
+    if (ms > 0)
+    {
+        const int   availH    = availableHeight();
+        const float thumbH    = juce::jmax (24.0f, (float) availH * (float) availH
+                                                         / (float) contentHeight());
+        const float thumbY    = (float) kHeaderH
+                                + (float) scrollOffset_ / (float) ms
+                                  * ((float) availH - thumbH);
+        const float thumbX    = (float) getWidth() - (float) kScrollW - 2.0f;
 
-        // ── Diagram area (left side) ─────────────────────────────────────
-        const auto diagRect = card.withWidth  ((float) kDiagramW)
-                                  .withHeight (card.getHeight() - 2.0f * (float) kCardPad)
-                                  .translated ((float) kCardPad, (float) kCardPad);
+        // Faint track.
+        g.setColour (juce::Colours::white.withAlpha (0.04f));
+        g.fillRoundedRectangle (thumbX, (float) kHeaderH,
+                                (float) kScrollW, (float) availH, 2.0f);
 
-        if (opt.drawDiagram)
-            opt.drawDiagram (g, diagRect);
-
-        // ── Name + description (right of diagram) ────────────────────────
-        const float checkW  = selected ? 28.0f : 0.0f;
-        const float textX   = card.getX() + (float) kDiagramW + 2.0f * (float) kCardPad;
-        const float textW   = card.getRight() - textX - (float) kCardPad - checkW;
-
-        g.setColour (selected ? LF::ink1() : LF::ink2());
-        g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-        g.drawFittedText (opt.name,
-                          (int) textX, (int) card.getY() + kCardPad,
-                          (int) textW, 18,
-                          juce::Justification::centredLeft, 1);
-
-        // Description: 11 pt, ink2 (selected) or ink3 (unselected)
-        g.setColour (selected ? LF::ink2() : LF::ink3());
-        g.setFont (juce::FontOptions (11.0f, juce::Font::plain));
-        g.drawFittedText (opt.description,
-                          (int) textX, (int) card.getY() + kCardPad + 20,
-                          (int) textW, (int) card.getHeight() - kCardPad * 2 - 20,
-                          juce::Justification::topLeft, 3);
-
-        // ── Checkmark for selected option ────────────────────────────────
-        if (selected)
-        {
-            const float cx = card.getRight() - 18.0f;
-            const float cy = card.getCentreY();
-            juce::Path check;
-            check.startNewSubPath (cx - 6.0f, cy - 0.5f);
-            check.lineTo          (cx - 2.0f, cy + 4.5f);
-            check.lineTo          (cx + 6.0f, cy - 5.5f);
-            g.setColour (juce::Colour (kAccentArgb));
-            g.strokePath (check, juce::PathStrokeType (2.0f,
-                                                        juce::PathStrokeType::curved,
-                                                        juce::PathStrokeType::rounded));
-        }
+        // Thumb.
+        g.setColour (juce::Colour (kAccentArgb).withAlpha (0.35f));
+        g.fillRoundedRectangle (thumbX, thumbY, (float) kScrollW, thumbH, 2.0f);
     }
 
     // ── Close X in top-right 44px of header ─────────────────────────────
@@ -260,8 +292,8 @@ void PickerDrawer::mouseDown (const juce::MouseEvent& e)
         return;
     }
 
-    // Option card selection.
-    const int i = (e.y - kHeaderH) / kCardH;
+    // Option card selection — account for scroll offset when mapping y to card index.
+    const int i = (e.y - kHeaderH + scrollOffset_) / kCardH;
     if (i >= 0 && i < (int) options_.size())
     {
         selectedIdx_ = i;
@@ -274,13 +306,25 @@ void PickerDrawer::mouseDown (const juce::MouseEvent& e)
 
 void PickerDrawer::mouseMove (const juce::MouseEvent& e)
 {
-    const int raw     = (e.y < kHeaderH) ? -1 : (e.y - kHeaderH) / kCardH;
+    const int raw     = (e.y < kHeaderH) ? -1 : (e.y - kHeaderH + scrollOffset_) / kCardH;
     const int clamped = (raw >= 0 && raw < (int) options_.size()) ? raw : -1;
     if (clamped != hoverIdx_)
     {
         hoverIdx_ = clamped;
         repaint();
     }
+}
+
+void PickerDrawer::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w)
+{
+    const int ms = maxScroll();
+    if (ms <= 0) return;
+
+    // deltaY > 0 = wheel up = scroll content up = decrease offset.
+    // Multiply by a pixel step that feels natural on a trackpad (~80 px per normalised unit).
+    const int delta = juce::roundToInt (-w.deltaY * 80.0f);
+    scrollOffset_   = juce::jlimit (0, ms, scrollOffset_ + delta);
+    repaint();
 }
 
 void PickerDrawer::mouseExit (const juce::MouseEvent&)
