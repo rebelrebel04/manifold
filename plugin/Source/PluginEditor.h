@@ -124,9 +124,22 @@ private:
     LabeledKnob blendKnob { "BLEND", juce::Slider::RotaryHorizontalVerticalDrag };
     std::unique_ptr<SliderAttachment> blendAttach;
 
-    // Filter picker drawer — slides in from right, owned by editor.
+    // Shape + Filter picker drawers — both slide in from right, same bounds.
+    manifold::ui::PickerDrawer shapeDrawer;
     manifold::ui::PickerDrawer filterDrawer;
+    void openShapeDrawer();
     void openFilterDrawer();
+
+    // Global mouse watcher — detects clicks outside an open drawer and closes it.
+    // Registered with addMouseListener(watcher, true) so knobs/buttons still receive
+    // their own events; the watcher fires as a secondary notification.
+    struct DrawerMouseWatcher : public juce::MouseListener
+    {
+        explicit DrawerMouseWatcher (ManifoldEditor& e) : editor (e) {}
+        void mouseDown (const juce::MouseEvent&) override;
+        ManifoldEditor& editor;
+    };
+    std::unique_ptr<DrawerMouseWatcher> drawerMouseWatcher;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ManifoldEditor)
 };

@@ -1,6 +1,7 @@
 #include "PluginEditor.h"
 #include "Params.h"
 #include "ui/FilterDiagram.h"
+#include "ui/ShapeDiagram.h"
 
 namespace
 {
@@ -367,16 +368,37 @@ ManifoldEditor::ManifoldEditor (ManifoldProcessor& p)
     sigPath = std::make_unique<SignalPathToggle> (apvts);
     addAndMakeVisible (*sigPath);
 
-    // Filter drawer — added before bypass overlay so the overlay remains topmost.
+    // Shape + Filter drawers — added before bypass overlay so the overlay remains topmost.
+    addChildComponent (shapeDrawer);
     addChildComponent (filterDrawer);
+    shapePicker.onClick  = [this] { openShapeDrawer(); };
     filterPicker.onClick = [this] { openFilterDrawer(); };
+
+    // Global mouse watcher — closes any open drawer on click-outside.
+    // wantsEventsForAllNestedComponents=true means every child click also notifies us;
+    // the original target still receives its own event normally.
+    drawerMouseWatcher = std::make_unique<DrawerMouseWatcher> (*this);
+    addMouseListener (drawerMouseWatcher.get(), true);
 
     setSize (kEditorWidth, kEditorHeight);
 }
 
 ManifoldEditor::~ManifoldEditor()
 {
+    removeMouseListener (drawerMouseWatcher.get());
     setLookAndFeel (nullptr);
+}
+
+void ManifoldEditor::DrawerMouseWatcher::mouseDown (const juce::MouseEvent& e)
+{
+    // Convert the click position into the editor's local coordinate space.
+    const auto pos = e.getEventRelativeTo (&editor).getPosition();
+
+    if (editor.shapeDrawer.isVisible() && ! editor.shapeDrawer.getBounds().contains (pos))
+        editor.shapeDrawer.hide();
+
+    if (editor.filterDrawer.isVisible() && ! editor.filterDrawer.getBounds().contains (pos))
+        editor.filterDrawer.hide();
 }
 
 void ManifoldEditor::updateBlendEnabled()
@@ -396,8 +418,82 @@ void ManifoldEditor::refreshPickerNames()
     if (shaperPickerAttach) shaperPickerAttach->sendInitialUpdate();
 }
 
+void ManifoldEditor::openShapeDrawer()
+{
+    // Toggle: clicking the same button while open closes the drawer.
+    if (shapeDrawer.isVisible()) { shapeDrawer.hide(); return; }
+
+    using ST  = manifold::params::ShaperType;
+    using Opt = manifold::ui::PickerDrawer::Option;
+
+    static const struct { ST type; const char* name; const char* desc; } kDefs[] =
+    {
+        { ST::Fold,      "Wavefolder",
+          "Reflects signal peaks back into the waveform. Bright, inharmonic character with dense upper partials. Best at high drive on bass." },
+        { ST::SoftClip,  "Soft Clip",
+          "Tanh saturation. Gentle odd harmonics that round transients warmly. The safe choice for bus processing at any drive level." },
+        { ST::HardClip,  "Hard Clip",
+          "Brick-wall limiting. Generates a full harmonic series instantly. Harsh and aggressive - pairs well with low resonance settings." },
+        { ST::Rectify,   "Full-Wave Rectify",
+          "Inverts the negative half and centers the output. Strong even harmonics and a subtle octave-up character at moderate drive." },
+        { ST::Sine,      "Sine Shaper",
+          "Maps signal through a sine function. Smooth and musical at low drive; wraps into complex folds as peaks exceed the curve." },
+        { ST::TubeAsym,  "Tube Asymmetric",
+          "Positive half saturates harder than negative. Adds even harmonics, DC motion, and a classic tube-circuit warmth." },
+        { ST::ChebyT3,   "Chebyshev T3",
+          "Third-degree polynomial. Adds a pure third harmonic for synthetic, brassy timbres with minimal aliasing artifacts." },
+        { ST::ChebyT5,   "Chebyshev T5",
+          "Fifth-degree polynomial. Dense harmonic content up to the 5th partial. Complex and metallic - chaotic modulation thrives here." },
+    };
+
+    std::vector<Opt> options;
+    for (auto& d : kDefs)
+    {
+        Opt opt;
+        opt.name        = d.name;
+        opt.description = d.desc;
+        const ST type   = d.type;
+        opt.drawDiagram = [type] (juce::Graphics& g, juce::Rectangle<float> r)
+        {
+            juce::Graphics::ScopedSaveState save (g);
+            g.setOrigin (r.getTopLeft().toInt());
+            manifold::ui::ShapeDiagram diag (type);
+            diag.setBounds ({ 0, 0, (int) r.getWidth(), (int) r.getHeight() });
+            diag.paint (g);
+        };
+        options.push_back (std::move (opt));
+    }
+
+    auto& apvts    = processor.getAPVTS();
+    const int currentIdx = (int) apvts.getRawParameterValue (manifold::params::id::shaperType)->load();
+
+    shapeDrawer.configure (
+        "Shape",
+        std::move (options),
+        [this] (int idx)
+        {
+            if (auto* p = processor.getAPVTS().getParameter (manifold::params::id::shaperType))
+            {
+                const float norm = p->convertTo0to1 ((float) idx);
+                p->beginChangeGesture();
+                p->setValueNotifyingHost (norm);
+                p->endChangeGesture();
+            }
+        },
+        currentIdx);
+
+    portrait.setBounds (portrait.getBounds().withRight (shapeDrawer.getX()));
+    // Only restore portrait when both drawers are closed (handles the case where
+    // the user switches directly from shape drawer to filter drawer).
+    shapeDrawer.onHide = [this] { if (! filterDrawer.isVisible()) resized(); };
+    shapeDrawer.show();
+}
+
 void ManifoldEditor::openFilterDrawer()
 {
+    // Toggle: clicking the same button while open closes the drawer.
+    if (filterDrawer.isVisible()) { filterDrawer.hide(); return; }
+
     using FT  = manifold::params::FilterType;
     using Opt = manifold::ui::PickerDrawer::Option;
 
@@ -457,7 +553,7 @@ void ManifoldEditor::openFilterDrawer()
     // no compositing conflict, no context teardown. resized() restores full bounds
     // once the drawer has fully animated out and hidden itself.
     portrait.setBounds (portrait.getBounds().withRight (filterDrawer.getX()));
-    filterDrawer.onHide = [this] { resized(); };
+    filterDrawer.onHide = [this] { if (! shapeDrawer.isVisible()) resized(); };
     filterDrawer.show();
 }
 
@@ -565,8 +661,10 @@ void ManifoldEditor::resized()
     // Overlay covers everything below the header (bypass button stays accessible).
     bypassOverlay.setBounds (getLocalBounds().withTrimmedTop (kHeaderH).withTrimmedBottom (kFooterH));
 
-    // Picker drawer: right ~46% of content area, full height below header.
+    // Shape + Filter drawers share the same right-panel slot.
     const int drawerW = (getWidth() * 46) / 100;
-    filterDrawer.setBounds (getWidth() - drawerW, kHeaderH,
-                            drawerW, getHeight() - kHeaderH - kFooterH);
+    const juce::Rectangle<int> drawerBounds (getWidth() - drawerW, kHeaderH,
+                                             drawerW, getHeight() - kHeaderH - kFooterH);
+    shapeDrawer .setBounds (drawerBounds);
+    filterDrawer.setBounds (drawerBounds);
 }
