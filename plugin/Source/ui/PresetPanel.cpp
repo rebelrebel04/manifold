@@ -509,7 +509,7 @@ void PresetPanel::paintBrowse (juce::Graphics& g)
             switch (it.kind)
             {
                 case LayoutItem::Kind::FavoritesDivider:
-                    paintSectionDivider (g, rect, "\xe2\x98\x85 FAVORITES", true);
+                    paintSectionDivider (g, rect, "FAVORITES", true);
                     break;
                 case LayoutItem::Kind::AllPresetsDivider:
                     paintSectionDivider (g, rect, "ALL PRESETS", false);
@@ -540,7 +540,9 @@ void PresetPanel::paintBrowse (juce::Graphics& g)
     }
 }
 
-// Tab strip: same visual vocab as before, with special tinting for the ★ tab.
+// Tab strip: same visual vocab as before, with a custom-painted star glyph
+// for the favorites filter tab (drawing the U+2605 Unicode codepoint via
+// drawFittedText ran into font fallback issues, so we use a juce::Path).
 void PresetPanel::paintTabStrip (juce::Graphics& g) const
 {
     using LF = manifold::ui::ManifoldLookAndFeel;
@@ -552,20 +554,21 @@ void PresetPanel::paintTabStrip (juce::Graphics& g) const
     g.drawHorizontalLine (kHeaderH + kTabH - 1, 0.0f, (float) getWidth());
 
     const auto& cats = categories();
+    constexpr juce::uint32 kStarArgb = 0xfff5c95f;
+    const auto starColour = juce::Colour (kStarArgb);
+
     for (int i = 0; i < cats.size(); ++i)
     {
-        const auto tb     = tabBounds (i).toFloat();
-        const bool active = (i == selectedCat_);
-        const bool hov    = (i == hoverTabIdx_) && ! active;
+        const auto tb      = tabBounds (i).toFloat();
+        const bool active  = (i == selectedCat_);
+        const bool hov     = (i == hoverTabIdx_) && ! active;
         const bool starTab = isFavCat (i);
 
-        // Distinct accent for the favorites filter tab.
-        constexpr juce::uint32 kStarArgb = 0xfff5c95f;
-
+        // Pill background.
         if (active)
         {
             const auto pill   = tb.reduced (3.0f, 7.0f);
-            const auto fill   = starTab ? juce::Colour (kStarArgb) : juce::Colour (kAccentArgb);
+            const auto fill   = starTab ? starColour : juce::Colour (kAccentArgb);
             g.setColour (fill.withAlpha (0.22f));
             g.fillRoundedRectangle (pill, 4.0f);
             g.setColour (fill.withAlpha (0.55f));
@@ -577,17 +580,42 @@ void PresetPanel::paintTabStrip (juce::Graphics& g) const
             g.fillRoundedRectangle (tb.reduced (3.0f, 7.0f), 4.0f);
         }
 
-        const auto starColour = juce::Colour (kStarArgb);
         if (starTab)
-            g.setColour (active ? juce::Colours::white : starColour.withAlpha (hov ? 1.0f : 0.85f));
+        {
+            // Custom-painted star, centered in the tab bounds.
+            const float cx = tb.getCentreX();
+            const float cy = tb.getCentreY();
+            const float s  = active ? 1.05f : 0.95f;   // a touch bigger when selected
+            auto pt = [&] (float x, float y) {
+                return juce::Point<float> (cx + (x - 6.5f) * s, cy + (y - 6.5f) * s);
+            };
+            juce::Path star;
+            star.startNewSubPath (pt (6.5f, 1.2f));
+            star.lineTo (pt (8.1f, 4.6f));   star.lineTo (pt (11.7f, 5.1f));
+            star.lineTo (pt (9.1f, 7.7f));   star.lineTo (pt (9.7f, 11.3f));
+            star.lineTo (pt (6.5f, 9.6f));   star.lineTo (pt (3.3f, 11.3f));
+            star.lineTo (pt (3.9f, 7.7f));   star.lineTo (pt (1.3f, 5.1f));
+            star.lineTo (pt (4.9f, 4.6f));   star.closeSubPath();
+
+            const auto col = active ? juce::Colours::white
+                                    : starColour.withAlpha (hov ? 1.0f : 0.85f);
+            if (active)
+            {
+                // Soft glow behind the filled star.
+                g.setColour (starColour.withAlpha (0.40f));
+                g.fillEllipse (cx - 8.0f, cy - 8.0f, 16.0f, 16.0f);
+            }
+            g.setColour (col);
+            g.fillPath (star);
+        }
         else
+        {
             g.setColour (active ? juce::Colour (kAccentArgb)
                                 : (hov ? LF::ink2() : LF::ink3()));
-
-        g.setFont (juce::FontOptions (starTab ? 12.0f : 9.0f,
-                                       active ? juce::Font::bold : juce::Font::plain));
-        g.drawFittedText (cats[i], tabBounds (i).reduced (2, 0),
-                          juce::Justification::centred, 1);
+            g.setFont (juce::FontOptions (9.0f, active ? juce::Font::bold : juce::Font::plain));
+            g.drawFittedText (cats[i], tabBounds (i).reduced (2, 0),
+                              juce::Justification::centred, 1);
+        }
     }
 }
 
@@ -859,32 +887,61 @@ void PresetPanel::paintTrashIcon (juce::Graphics& g, juce::Rectangle<int> bounds
                                               juce::PathStrokeType::rounded));
 }
 
-// "★ FAVORITES" / "ALL PRESETS" small uppercase label with a trailing hairline.
+// Small uppercase section label with a trailing hairline. When isFavoritesStyle
+// is true, prefixes a custom-painted gold star glyph (avoids font-fallback
+// issues with the U+2605 Unicode codepoint).
 void PresetPanel::paintSectionDivider (juce::Graphics& g, juce::Rectangle<int> bounds,
                                        const juce::String& label, bool isFavoritesStyle) const
 {
     using LF = manifold::ui::ManifoldLookAndFeel;
     constexpr juce::uint32 kStarArgb = 0xfff5c95f;
 
+    const auto txtRect = bounds.reduced (16, 0).withTrimmedTop (8);
+    int labelStartX = txtRect.getX();
+
+    // Optional star glyph at the start.
+    if (isFavoritesStyle)
+    {
+        // Anchor on the text rect's centerY (not bounds.centerY) so the star
+        // mid-aligns with the FAVORITES text, which sits below the trimmed-top.
+        const float cx = (float) txtRect.getX() + 5.0f;
+        const float cy = (float) txtRect.getCentreY();
+        auto pt = [&] (float x, float y) {
+            return juce::Point<float> (cx + (x - 6.5f) * 0.75f, cy + (y - 6.5f) * 0.75f);
+        };
+        juce::Path star;
+        star.startNewSubPath (pt (6.5f, 1.2f));
+        star.lineTo (pt (8.1f, 4.6f));   star.lineTo (pt (11.7f, 5.1f));
+        star.lineTo (pt (9.1f, 7.7f));   star.lineTo (pt (9.7f, 11.3f));
+        star.lineTo (pt (6.5f, 9.6f));   star.lineTo (pt (3.3f, 11.3f));
+        star.lineTo (pt (3.9f, 7.7f));   star.lineTo (pt (1.3f, 5.1f));
+        star.lineTo (pt (4.9f, 4.6f));   star.closeSubPath();
+        g.setColour (juce::Colour (kStarArgb));
+        g.fillPath (star);
+        labelStartX += 14;   // leave room for the star
+    }
+
     g.setColour (isFavoritesStyle ? juce::Colour (kStarArgb) : LF::ink4());
     g.setFont (juce::FontOptions (8.5f, juce::Font::bold));
-    const auto txtRect = bounds.reduced (16, 0).withTrimmedTop (8);
 
-    // Measure label width to anchor the hairline.
+    // Measure label width to anchor the trailing hairline.
     juce::GlyphArrangement ga;
     ga.addLineOfText (g.getCurrentFont(), label, 0.0f, 0.0f);
     const float labelW = ga.getBoundingBox (0, ga.getNumGlyphs(), true).getWidth() + 8.0f;
 
-    g.drawFittedText (label, txtRect, juce::Justification::centredLeft, 1);
+    g.drawFittedText (label,
+                      { labelStartX, txtRect.getY(), txtRect.getRight() - labelStartX, txtRect.getHeight() },
+                      juce::Justification::centredLeft, 1);
 
     // Trailing hairline that fades to transparent.
-    const float lineY = (float) bounds.getCentreY() + 4.0f;
-    juce::ColourGradient lg (LF::plateLine(),                  txtRect.getX() + labelW,    lineY,
+    const float lineY  = (float) bounds.getCentreY() + 4.0f;
+    const float lineX0 = (float) labelStartX + labelW;
+    juce::ColourGradient lg (LF::plateLine(),                  lineX0,                     lineY,
                               juce::Colours::transparentBlack, (float) bounds.getRight(),  lineY,
                               false);
     g.setGradientFill (lg);
-    g.fillRect (juce::Rectangle<float> (txtRect.getX() + labelW, lineY,
-                                         (float) bounds.getRight() - txtRect.getX() - labelW - 12.0f,
+    g.fillRect (juce::Rectangle<float> (lineX0, lineY,
+                                         (float) bounds.getRight() - lineX0 - 12.0f,
                                          1.0f));
 }
 
