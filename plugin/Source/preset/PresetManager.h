@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <functional>
+#include <set>
 #include <vector>
 #include "FactoryPresets.h"
 
@@ -48,6 +49,37 @@ public:
     void next();
     void prev();
 
+    // True when the previously-loaded preset was deleted and the live
+    // params no longer correspond to any preset (header shows "— modified —").
+    // Cleared by load() / saveUserPreset().
+    bool isModified() const noexcept { return currentIndex_ < 0 && getCount() > 0; }
+
+    // ── Favorites ──────────────────────────────────────────────────────────
+    // Favorites are persisted as a JSON array of stable IDs at
+    //   ~/Library/Application Support/Manifold/favorites.json
+    // Stale IDs (referring to deleted presets or removed factory entries) are
+    // dropped lazily on next save.
+    bool isFavorite      (int idx) const;
+    void toggleFavorite  (int idx);
+    int  getFavoriteCount() const noexcept;
+
+    static juce::File getFavoritesFile();
+
+    // Fired (on the message thread) after favorites change; UI should repaint.
+    std::function<void()> onFavoritesChanged;
+
+    // ── User-preset delete ────────────────────────────────────────────────
+    // Removes the .mfld file, rescans, and adjusts currentIndex_:
+    //   - If the deleted preset was the loaded one → currentIndex_ = -1 (modified state)
+    //   - If a preset at a lower index was deleted → currentIndex_ shifts down by 1
+    // Fires onPresetDeleted on completion. No-op for factory presets / invalid idx.
+    void deleteUserPreset (int idx);
+
+    // Fired (on the message thread) after a successful deletion; UI should
+    // refresh both the header label (in case modified state changed) and any
+    // visible preset list.
+    std::function<void()> onPresetDeleted;
+
     // ── User-preset save API ────────────────────────────────────────────────
     // Check whether a user preset with this name (case-insensitive) already exists.
     bool userPresetNameExists (const juce::String& name) const;
@@ -76,12 +108,17 @@ public:
 private:
     juce::ValueTree buildTree (const FactoryPreset& p) const;
     void            scanUserPresets();
+    void            loadFavoritesFromDisk();
+    void            saveFavoritesToDisk();
 
     juce::AudioProcessorValueTreeState& apvts_;
     // Combined vector: [factory presets 0..factoryCount_-1 | user presets factoryCount_..N]
     std::vector<juce::ValueTree> presetTrees_;
     int                          factoryCount_  = 0;
     int                          currentIndex_  = 0;
+
+    // In-memory favorites set (stable IDs from getStableId).
+    std::set<juce::String> favorites_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PresetManager)
 };

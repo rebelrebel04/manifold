@@ -262,9 +262,7 @@ ManifoldEditor::PresetRow::PresetRow (manifold::preset::PresetManager& pm)
 
     nameLabel.setJustificationType (juce::Justification::centred);
     nameLabel.setColour (juce::Label::textColourId, manifold::ui::ManifoldLookAndFeel::ink2());
-    nameLabel.setFont (juce::FontOptions (11.0f, juce::Font::bold));
-    nameLabel.setText (presetManager.getDisplayName (presetManager.getCurrentIndex()),
-                       juce::dontSendNotification);
+    refreshLabel();
 
     // Browse button click is wired from ManifoldEditor after both presetRow and
     // presetPanel are constructed — see ManifoldEditor constructor below.
@@ -274,8 +272,17 @@ ManifoldEditor::PresetRow::PresetRow (manifold::preset::PresetManager& pm)
 
 void ManifoldEditor::PresetRow::refreshLabel()
 {
-    nameLabel.setText (presetManager.getDisplayName (presetManager.getCurrentIndex()),
-                       juce::dontSendNotification);
+    if (presetManager.isModified())
+    {
+        nameLabel.setFont (juce::FontOptions (11.0f, juce::Font::italic));
+        nameLabel.setText ("- modified -", juce::dontSendNotification);
+    }
+    else
+    {
+        nameLabel.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+        nameLabel.setText (presetManager.getDisplayName (presetManager.getCurrentIndex()),
+                           juce::dontSendNotification);
+    }
 }
 
 void ManifoldEditor::PresetRow::resized()
@@ -327,10 +334,24 @@ ManifoldEditor::ManifoldEditor (ManifoldProcessor& p)
     presetRow->browseBtn.onClick = [this] { openPresetPanel(); };
     presetRow->saveBtn.onClick   = [this] { openPresetPanel (true); };
 
-    // Single onPresetLoaded callback covers both the header label and panel repaint.
+    // Header label + panel repaint on any preset event:
+    //   onPresetLoaded   → after load() (incl. construction, save, prev/next)
+    //   onPresetDeleted  → after deleteUserPreset (may put us in "modified" state)
+    //   onFavoritesChanged → toggle favorite (panel only — header unchanged)
     processor.getPresetManager().onPresetLoaded = [this]
     {
         presetRow->refreshLabel();
+        if (presetPanel && presetPanel->isVisible())
+            presetPanel->repaint();
+    };
+    processor.getPresetManager().onPresetDeleted = [this]
+    {
+        presetRow->refreshLabel();
+        if (presetPanel && presetPanel->isVisible())
+            presetPanel->repaint();
+    };
+    processor.getPresetManager().onFavoritesChanged = [this]
+    {
         if (presetPanel && presetPanel->isVisible())
             presetPanel->repaint();
     };

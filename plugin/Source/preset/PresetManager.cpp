@@ -32,6 +32,9 @@ PresetManager::PresetManager (juce::AudioProcessorValueTreeState& apvts)
     // Load user presets from disk (no-op if directory doesn't exist yet).
     scanUserPresets();
 
+    // Load favorites from disk (no-op if file doesn't exist).
+    loadFavoritesFromDisk();
+
     // Start in a defined state — the host's setStateInformation() may overwrite this.
     if (! presetTrees_.empty())
         load (0);
@@ -100,12 +103,14 @@ void PresetManager::load (int idx)
 void PresetManager::next()
 {
     if (getCount() == 0) return;
+    if (currentIndex_ < 0) { load (0); return; }
     load ((currentIndex_ + 1) % getCount());
 }
 
 void PresetManager::prev()
 {
     if (getCount() == 0) return;
+    if (currentIndex_ < 0) { load (getCount() - 1); return; }
     load ((currentIndex_ - 1 + getCount()) % getCount());
 }
 
@@ -179,6 +184,101 @@ void PresetManager::saveUserPreset (const juce::String& name,
             break;
         }
     }
+}
+
+// ─── Favorites ────────────────────────────────────────────────────────────────
+
+juce::File PresetManager::getFavoritesFile()
+{
+    return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+               .getChildFile ("Manifold/favorites.json");
+}
+
+bool PresetManager::isFavorite (int idx) const
+{
+    if (idx < 0 || idx >= getCount()) return false;
+    // Re-derive the stable ID and check membership.
+    if (idx < factoryCount_)
+        return favorites_.count ("factory:" + getFactoryPresets()[(size_t) idx].id) > 0;
+    return favorites_.count ("user:" + getName (idx)) > 0;
+}
+
+void PresetManager::toggleFavorite (int idx)
+{
+    if (idx < 0 || idx >= getCount()) return;
+    const auto id = getStableId (idx);
+    if (id.isEmpty()) return;
+
+    if (favorites_.count (id) > 0)
+        favorites_.erase (id);
+    else
+        favorites_.insert (id);
+
+    saveFavoritesToDisk();
+    if (onFavoritesChanged) onFavoritesChanged();
+}
+
+int PresetManager::getFavoriteCount() const noexcept
+{
+    return (int) favorites_.size();
+}
+
+void PresetManager::loadFavoritesFromDisk()
+{
+    favorites_.clear();
+    const auto file = getFavoritesFile();
+    if (! file.existsAsFile()) return;
+
+    auto json = juce::JSON::parse (file);
+    if (auto* arr = json.getArray())
+        for (const auto& v : *arr)
+            if (v.isString())
+                favorites_.insert (v.toString());
+}
+
+void PresetManager::saveFavoritesToDisk()
+{
+    const auto dir  = getFavoritesFile().getParentDirectory();
+    if (dir.createDirectory().failed()) return;
+
+    juce::Array<juce::var> arr;
+    for (const auto& id : favorites_)
+        arr.add (id);
+
+    const auto file = getFavoritesFile();
+    file.replaceWithText (juce::JSON::toString (juce::var (arr), true));
+}
+
+// ─── Delete ───────────────────────────────────────────────────────────────────
+
+void PresetManager::deleteUserPreset (int idx)
+{
+    if (! isUserPreset (idx)) return;   // factory or invalid → no-op
+
+    // Resolve the file from the preset's name (mirrors saveUserPreset path).
+    const auto file = getUserPresetDir().getChildFile (sanitizeFilename (getName (idx)));
+
+    // Capture the stable ID before the rescan invalidates indices.
+    const auto deletedStableId = getStableId (idx);
+    const bool deletedWasLoaded = (idx == currentIndex_);
+
+    if (file.existsAsFile()) file.deleteFile();
+
+    // Clean up favorites entry if present.
+    if (! deletedStableId.isEmpty() && favorites_.erase (deletedStableId) > 0)
+        saveFavoritesToDisk();
+
+    // Rescan rebuilds presetTrees_ (factoryCount_ stays the same; user presets
+    // collapse to fill the gap).
+    scanUserPresets();
+
+    // Adjust currentIndex_:
+    if (deletedWasLoaded)
+        currentIndex_ = -1;            // modified state — params preserved
+    else if (currentIndex_ > idx)
+        --currentIndex_;               // shift down to track the same preset
+
+    if (onPresetDeleted) onPresetDeleted();
 }
 
 PresetManager::StateInfo PresetManager::getCurrentStateInfo() const

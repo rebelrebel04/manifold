@@ -67,10 +67,15 @@ PresetPanel::PresetPanel (manifold::preset::PresetManager& pm)
 // ─────────────────────────────────────────────────────────────────────────────
 // Categories
 // ─────────────────────────────────────────────────────────────────────────────
+// Category indices:
+//   0 = All (everything; favorites sort to top with section dividers)
+//   1 = ★  (favorites filter — across all categories, with a count banner)
+//   2..7 = the six sound territories
 const juce::StringArray& PresetPanel::categories()
 {
     static const juce::StringArray kCats {
-        "All", "Wobble", "Growl", "Drone", "Metal", "Glitch", "Alien"
+        "All", juce::CharPointer_UTF8 ("\xe2\x98\x85"),   // ★
+        "Wobble", "Growl", "Drone", "Metal", "Glitch", "Alien"
     };
     return kCats;
 }
@@ -83,18 +88,80 @@ const juce::StringArray& PresetPanel::saveCategories()
     return kSave;
 }
 
-std::vector<int> PresetPanel::filteredIndices() const
+// Predicates derived from selectedCat_.
+static bool isAllCat (int catIdx)         { return catIdx == 0; }
+static bool isFavCat (int catIdx)         { return catIdx == 1; }
+static juce::String catName (int catIdx)
 {
-    std::vector<int> result;
-    const auto& cats    = categories();
-    const bool  showAll = (selectedCat_ == 0);
-    const auto  cat     = cats[selectedCat_];
+    return PresetPanel::saveCategories()[juce::jlimit (0, PresetPanel::saveCategories().size() - 1, catIdx - 2)];
+}
 
+// Build the variable-height item list for the current view + filter.
+//
+//   All view:    [★ FAVORITES divider, fav rows..., ALL PRESETS divider, non-fav rows...]
+//                (dividers omitted when the corresponding section would be empty)
+//   ★ view:      [filter banner, fav rows across all categories...]
+//   Specific:    [rows in that category only — no fav-priority sort, no dividers]
+std::vector<PresetPanel::LayoutItem> PresetPanel::computeLayout() const
+{
+    std::vector<LayoutItem> out;
+    int y = 0;
+
+    auto append = [&] (LayoutItem::Kind k, int presetIdx, int h)
+    {
+        LayoutItem it; it.kind = k; it.presetIdx = presetIdx; it.yTop = y; it.height = h;
+        out.push_back (it);
+        y += h;
+    };
+
+    if (isFavCat (selectedCat_))
+    {
+        // ★ — favorites only, with banner on top.
+        const int favCount = pm_.getFavoriteCount();
+        append (LayoutItem::Kind::FilterBanner, -1, kBannerH);
+        for (int i = 0; i < pm_.getCount(); ++i)
+            if (pm_.isFavorite (i))
+                append (LayoutItem::Kind::Preset, i, kRowH);
+        juce::ignoreUnused (favCount);
+        return out;
+    }
+
+    if (isAllCat (selectedCat_))
+    {
+        // All — fav-first sort with section dividers.
+        std::vector<int> favs, rest;
+        for (int i = 0; i < pm_.getCount(); ++i)
+            (pm_.isFavorite (i) ? favs : rest).push_back (i);
+
+        if (! favs.empty())
+        {
+            append (LayoutItem::Kind::FavoritesDivider, -1, kDividerH);
+            for (int pi : favs) append (LayoutItem::Kind::Preset, pi, kRowH);
+        }
+        if (! rest.empty())
+        {
+            // Only show "ALL PRESETS" divider when favorites preceded it (otherwise redundant).
+            if (! favs.empty())
+                append (LayoutItem::Kind::AllPresetsDivider, -1, kDividerH);
+            for (int pi : rest) append (LayoutItem::Kind::Preset, pi, kRowH);
+        }
+        return out;
+    }
+
+    // Specific category — flat list, original order.
+    const auto wantCat = catName (selectedCat_);
     for (int i = 0; i < pm_.getCount(); ++i)
-        if (showAll || pm_.getCategory (i) == cat)
-            result.push_back (i);
+        if (pm_.getCategory (i) == wantCat)
+            append (LayoutItem::Kind::Preset, i, kRowH);
 
-    return result;
+    return out;
+}
+
+int PresetPanel::contentH() const
+{
+    const auto items = computeLayout();
+    if (items.empty()) return 0;
+    return items.back().yTop + items.back().height;
 }
 
 juce::Colour PresetPanel::engineColour (const juce::String& engine) noexcept
@@ -111,9 +178,43 @@ juce::Colour PresetPanel::engineColour (const juce::String& engine) noexcept
 // ─────────────────────────────────────────────────────────────────────────────
 // Geometry
 // ─────────────────────────────────────────────────────────────────────────────
-juce::Rectangle<int> PresetPanel::rowBounds (int fi) const noexcept
+juce::Rectangle<int> PresetPanel::rowBoundsForLayoutItem (const LayoutItem& it) const noexcept
 {
-    return { 0, listAreaTop() + fi * kRowH - scrollOffset_, getWidth(), kRowH };
+    return { 0, listAreaTop() + it.yTop - scrollOffset_, getWidth(), it.height };
+}
+
+juce::Rectangle<int> PresetPanel::starBounds (juce::Rectangle<int> row) const noexcept
+{
+    // Left edge: small button strip flanking the engine dot.
+    return { row.getX() + 4, row.getCentreY() - kStarW / 2, kStarW, kStarW };
+}
+
+juce::Rectangle<int> PresetPanel::trashBounds (juce::Rectangle<int> row) const noexcept
+{
+    // Right side: just inside the scroll-thumb gutter, before the USER badge.
+    // USER badge (when present) sits at row.getRight() - 44 ≈ 10px right margin + badge.
+    // Place trash to the left of where the badge starts.
+    const int rightGutter = kScrollHitW + 6;        // keep clear of the scroll grab zone
+    const int badgeShift  = 50;                     // reserve room when USER badge is shown
+    const int x           = row.getRight() - rightGutter - badgeShift - kTrashW;
+    return { x, row.getCentreY() - kTrashW / 2, kTrashW, kTrashW };
+}
+
+juce::Rectangle<int> PresetPanel::confirmDeleteBounds (juce::Rectangle<int> row) const noexcept
+{
+    // [Delete] — red filled button on the right (mirrors collision overwrite styling).
+    constexpr int w = 70, h = 26;
+    return { row.getRight() - 14 - w,
+             row.getCentreY() - h / 2, w, h };
+}
+
+juce::Rectangle<int> PresetPanel::confirmCancelBounds (juce::Rectangle<int> row) const noexcept
+{
+    // [Cancel] — ghost button to the left of [Delete].
+    constexpr int w = 60, h = 26;
+    const auto del = confirmDeleteBounds (row);
+    return { del.getX() - 8 - w,
+             row.getCentreY() - h / 2, w, h };
 }
 
 juce::Rectangle<int> PresetPanel::tabBounds (int catIdx) const noexcept
@@ -206,7 +307,12 @@ void PresetPanel::enterBrowseMode()
 {
     state_ = State::Browse;
     scrollOffset_ = 0;
-    hoverRowIdx_  = hoverTabIdx_ = -1;
+    hoverTabIdx_       = -1;
+    hoverRowPmIdx_     = -1;
+    hoverFavPmIdx_     = -1;
+    hoverDelPmIdx_     = -1;
+    confirmingDelPmIdx_ = -1;
+    hoverConfirmBtn_   = 0;
     nameInput_.setVisible (false);
     saveConfirmBtn.setVisible (false);
     cancelBtn.setVisible (false);
@@ -368,56 +474,24 @@ void PresetPanel::paintHeader (juce::Graphics& g, const juce::String& title) con
 }
 
 // ─── Browse ──────────────────────────────────────────────────────────────────
-void PresetPanel::paintBrowse (juce::Graphics& g) const
+void PresetPanel::paintBrowse (juce::Graphics& g)
 {
     using LF = manifold::ui::ManifoldLookAndFeel;
 
-    // Category tab strip.
-    {
-        const auto tabArea = juce::Rectangle<int> (0, kHeaderH, getWidth(), kTabH);
-        g.setColour (LF::plate0());
-        g.fillRect (tabArea);
-        g.setColour (LF::plateLine());
-        g.drawHorizontalLine (kHeaderH + kTabH - 1, 0.0f, (float) getWidth());
+    // Clamp scroll if content shrank (delete, category change, etc.).
+    scrollOffset_ = juce::jlimit (0, maxScroll(), scrollOffset_);
 
-        const auto& cats = categories();
-        for (int i = 0; i < cats.size(); ++i)
-        {
-            const auto tb     = tabBounds (i).toFloat();
-            const bool active = (i == selectedCat_);
-            const bool hov    = (i == hoverTabIdx_) && ! active;
-
-            if (active)
-            {
-                const auto pill = tb.reduced (4.0f, 7.0f);
-                g.setColour (juce::Colour (kAccentArgb).withAlpha (0.22f));
-                g.fillRoundedRectangle (pill, 4.0f);
-                g.setColour (juce::Colour (kAccentArgb).withAlpha (0.50f));
-                g.drawRoundedRectangle (pill.reduced (0.5f), 4.0f, 1.0f);
-            }
-            else if (hov)
-            {
-                g.setColour (LF::plate3());
-                g.fillRoundedRectangle (tb.reduced (4.0f, 7.0f), 4.0f);
-            }
-
-            g.setColour (active ? juce::Colour (kAccentArgb)
-                                : (hov ? LF::ink2() : LF::ink3()));
-            g.setFont (juce::FontOptions (9.0f, active ? juce::Font::bold : juce::Font::plain));
-            g.drawFittedText (cats[i], tabBounds (i).reduced (2, 0),
-                              juce::Justification::centred, 1);
-        }
-    }
+    paintTabStrip (g);
 
     // Preset list (clipped to scrollable area).
     {
         juce::Graphics::ScopedSaveState clip (g);
         g.reduceClipRegion (0, listAreaTop(), getWidth(), listAreaH());
 
-        const auto indices    = filteredIndices();
+        const auto items     = computeLayout();
         const int  currentIdx = pm_.getCurrentIndex();
 
-        if (indices.empty())
+        if (items.empty())
         {
             g.setColour (LF::ink4());
             g.setFont (juce::FontOptions (11.0f));
@@ -426,81 +500,26 @@ void PresetPanel::paintBrowse (juce::Graphics& g) const
                               juce::Justification::centredLeft, 1);
         }
 
-        for (int fi = 0; fi < (int) indices.size(); ++fi)
+        for (const auto& it : items)
         {
-            const int  pi   = indices[(size_t) fi];
-            const auto row  = rowBounds (fi).toFloat();
-            const bool sel  = (pi == currentIdx);
-            const bool hov  = (fi == hoverRowIdx_) && ! sel;
-            const bool last = (fi == (int) indices.size() - 1);
-
-            if (row.getBottom() < (float) listAreaTop() || row.getY() > (float) getHeight())
+            const auto rect = rowBoundsForLayoutItem (it);
+            if (rect.getBottom() < listAreaTop() || rect.getY() > getHeight())
                 continue;
 
-            if (sel)
+            switch (it.kind)
             {
-                juce::ColourGradient bg (LF::plate3(), row.getX(), row.getY(),
-                                          LF::plate2().brighter (0.04f), row.getX(), row.getBottom(), false);
-                g.setGradientFill (bg); g.fillRect (row);
-                g.setColour (juce::Colour (kAccentArgb).withAlpha (0.85f));
-                g.fillRect (row.withWidth (3.0f));
-                g.setColour (juce::Colour (kAccentArgb).withAlpha (0.20f));
-                g.drawRect (row.reduced (0.5f), 1.0f);
-            }
-            else if (hov)
-            {
-                g.setColour (LF::plate2().brighter (0.10f)); g.fillRect (row);
-            }
-            else
-            {
-                g.setColour (LF::plate2()); g.fillRect (row);
-            }
-
-            if (! last)
-            {
-                g.setColour (LF::plateLine());
-                g.drawHorizontalLine ((int) row.getBottom() - 1,
-                                      row.getX() + 12.0f, row.getRight() - 12.0f);
-            }
-
-            // Engine dot with glow.
-            const float dotR  = 5.0f;
-            const float dotCX = row.getX() + 20.0f;
-            const float dotCY = row.getCentreY();
-            const auto  ecol  = engineColour (pm_.getPrimaryEngine (pi));
-            g.setColour (ecol.withAlpha (0.28f));
-            g.fillEllipse (dotCX - dotR * 1.7f, dotCY - dotR * 1.7f, dotR * 3.4f, dotR * 3.4f);
-            g.setColour (ecol);
-            g.fillEllipse (dotCX - dotR, dotCY - dotR, dotR * 2.0f, dotR * 2.0f);
-
-            // Name + meta.
-            const float textX = dotCX + dotR + 12.0f;
-            const float textW = (float) getWidth() - textX - (float) kScrollW - 6.0f
-                                - (pm_.isUserPreset (pi) ? 44.0f : 0.0f);
-
-            g.setColour (sel ? LF::ink1() : LF::ink2());
-            g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
-            g.drawFittedText (pm_.getName (pi), (int) textX, (int) row.getY() + 10, (int) textW, 18,
-                              juce::Justification::centredLeft, 1);
-
-            g.setColour (LF::ink3());
-            g.setFont (juce::FontOptions (10.0f));
-            g.drawFittedText (pm_.getCategory (pi) + " - " + pm_.getPrimaryEngine (pi),
-                              (int) textX, (int) row.getY() + 31, (int) textW, 16,
-                              juce::Justification::centredLeft, 1);
-
-            // USER badge.
-            if (pm_.isUserPreset (pi))
-            {
-                const float bw = 34.0f, bh = 16.0f;
-                const float bx = row.getRight() - bw - 10.0f;
-                const float by = row.getCentreY() - bh * 0.5f;
-                g.setColour (juce::Colour (kAccentArgb).withAlpha (0.20f));
-                g.fillRoundedRectangle (bx, by, bw, bh, 3.0f);
-                g.setColour (juce::Colour (kAccentArgb).withAlpha (0.70f));
-                g.setFont (juce::FontOptions (8.5f, juce::Font::bold));
-                g.drawFittedText ("USER", (int) bx, (int) by, (int) bw, (int) bh,
-                                  juce::Justification::centred, 1);
+                case LayoutItem::Kind::FavoritesDivider:
+                    paintSectionDivider (g, rect, "\xe2\x98\x85 FAVORITES", true);
+                    break;
+                case LayoutItem::Kind::AllPresetsDivider:
+                    paintSectionDivider (g, rect, "ALL PRESETS", false);
+                    break;
+                case LayoutItem::Kind::FilterBanner:
+                    paintFilterBanner (g, rect, pm_.getFavoriteCount());
+                    break;
+                case LayoutItem::Kind::Preset:
+                    paintPresetRow (g, it, currentIdx);
+                    break;
             }
         }
     }
@@ -519,6 +538,402 @@ void PresetPanel::paintBrowse (juce::Graphics& g) const
         g.setColour (juce::Colour (kAccentArgb).withAlpha (0.35f));
         g.fillRoundedRectangle (thumbX, thumbY, (float) kScrollW, thumbH, 2.0f);
     }
+}
+
+// Tab strip: same visual vocab as before, with special tinting for the ★ tab.
+void PresetPanel::paintTabStrip (juce::Graphics& g) const
+{
+    using LF = manifold::ui::ManifoldLookAndFeel;
+
+    const auto tabArea = juce::Rectangle<int> (0, kHeaderH, getWidth(), kTabH);
+    g.setColour (LF::plate0());
+    g.fillRect (tabArea);
+    g.setColour (LF::plateLine());
+    g.drawHorizontalLine (kHeaderH + kTabH - 1, 0.0f, (float) getWidth());
+
+    const auto& cats = categories();
+    for (int i = 0; i < cats.size(); ++i)
+    {
+        const auto tb     = tabBounds (i).toFloat();
+        const bool active = (i == selectedCat_);
+        const bool hov    = (i == hoverTabIdx_) && ! active;
+        const bool starTab = isFavCat (i);
+
+        // Distinct accent for the favorites filter tab.
+        constexpr juce::uint32 kStarArgb = 0xfff5c95f;
+
+        if (active)
+        {
+            const auto pill   = tb.reduced (3.0f, 7.0f);
+            const auto fill   = starTab ? juce::Colour (kStarArgb) : juce::Colour (kAccentArgb);
+            g.setColour (fill.withAlpha (0.22f));
+            g.fillRoundedRectangle (pill, 4.0f);
+            g.setColour (fill.withAlpha (0.55f));
+            g.drawRoundedRectangle (pill.reduced (0.5f), 4.0f, 1.0f);
+        }
+        else if (hov)
+        {
+            g.setColour (LF::plate3());
+            g.fillRoundedRectangle (tb.reduced (3.0f, 7.0f), 4.0f);
+        }
+
+        const auto starColour = juce::Colour (kStarArgb);
+        if (starTab)
+            g.setColour (active ? juce::Colours::white : starColour.withAlpha (hov ? 1.0f : 0.85f));
+        else
+            g.setColour (active ? juce::Colour (kAccentArgb)
+                                : (hov ? LF::ink2() : LF::ink3()));
+
+        g.setFont (juce::FontOptions (starTab ? 12.0f : 9.0f,
+                                       active ? juce::Font::bold : juce::Font::plain));
+        g.drawFittedText (cats[i], tabBounds (i).reduced (2, 0),
+                          juce::Justification::centred, 1);
+    }
+}
+
+// One preset row — handles both default state and the inline delete-confirm overlay.
+void PresetPanel::paintPresetRow (juce::Graphics& g, const LayoutItem& it, int currentIdx) const
+{
+    using LF = manifold::ui::ManifoldLookAndFeel;
+    const int  pi      = it.presetIdx;
+    const auto rowI    = rowBoundsForLayoutItem (it);
+    const auto row     = rowI.toFloat();
+    const bool sel     = (pi == currentIdx);
+    const bool rowHov  = (pi == hoverRowPmIdx_) && ! sel;
+    const bool factory = ! pm_.isUserPreset (pi);
+    const bool confirm = (pi == confirmingDelPmIdx_);
+
+    // Base background.
+    if (confirm)
+    {
+        // Red-tinted gradient (matches the design's collision-style strip).
+        constexpr juce::uint32 kDangerArgb = 0xffdc6347;
+        juce::ColourGradient bg (juce::Colour (kDangerArgb).withAlpha (0.22f), row.getX(), row.getY(),
+                                  juce::Colour (kDangerArgb).withAlpha (0.10f), row.getX(), row.getBottom(),
+                                  false);
+        g.setGradientFill (bg); g.fillRect (row);
+        g.setColour (juce::Colour (kDangerArgb).withAlpha (0.55f));
+        g.drawRect (row.reduced (0.5f), 1.0f);
+    }
+    else if (sel)
+    {
+        juce::ColourGradient bg (LF::plate3(), row.getX(), row.getY(),
+                                  LF::plate2().brighter (0.04f), row.getX(), row.getBottom(), false);
+        g.setGradientFill (bg); g.fillRect (row);
+        g.setColour (juce::Colour (kAccentArgb).withAlpha (0.85f));
+        g.fillRect (row.withWidth (3.0f));
+        g.setColour (juce::Colour (kAccentArgb).withAlpha (0.20f));
+        g.drawRect (row.reduced (0.5f), 1.0f);
+    }
+    else if (rowHov)
+    {
+        g.setColour (LF::plate2().brighter (0.10f)); g.fillRect (row);
+    }
+    else
+    {
+        g.setColour (LF::plate2()); g.fillRect (row);
+    }
+
+    g.setColour (LF::plateLine());
+    g.drawHorizontalLine (rowI.getBottom() - 1,
+                          row.getX() + 12.0f, row.getRight() - 12.0f);
+
+    // Confirming state: skip the normal row content and paint just the red
+    // overlay. (The design CSS dims the underlying content to 25%; in JUCE we
+    // simplify by replacing it entirely — same UX effect, less paint cost.)
+    if (confirm)
+    {
+        paintConfirmStrip (g, rowI, pm_.getName (pi));
+        return;
+    }
+
+    // Star (left).
+    paintStar (g, starBounds (rowI), pm_.isFavorite (pi),
+               hoverFavPmIdx_ == pi);
+
+    // Engine dot — shifted right to make room for the star.
+    const float dotR  = 5.0f;
+    const float dotCX = (float) starBounds (rowI).getRight() + 12.0f;
+    const float dotCY = row.getCentreY();
+    const auto  ecol  = engineColour (pm_.getPrimaryEngine (pi));
+    g.setColour (ecol.withAlpha (0.28f));
+    g.fillEllipse (dotCX - dotR * 1.7f, dotCY - dotR * 1.7f, dotR * 3.4f, dotR * 3.4f);
+    g.setColour (ecol);
+    g.fillEllipse (dotCX - dotR, dotCY - dotR, dotR * 2.0f, dotR * 2.0f);
+
+    // Reserve right-side space for trash + USER badge.
+    const float rightReserve = (float) (kScrollW + kTrashW + 8 + (factory ? 0 : 44));
+    const float textX  = dotCX + dotR + 12.0f;
+    const float textW  = (float) getWidth() - textX - rightReserve;
+
+    g.setColour (sel ? LF::ink1() : LF::ink2());
+    g.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+    g.drawFittedText (pm_.getName (pi), (int) textX, rowI.getY() + 10, (int) textW, 18,
+                      juce::Justification::centredLeft, 1);
+
+    g.setColour (LF::ink3());
+    g.setFont (juce::FontOptions (10.0f));
+    g.drawFittedText (pm_.getCategory (pi) + " - " + pm_.getPrimaryEngine (pi),
+                      (int) textX, rowI.getY() + 31, (int) textW, 16,
+                      juce::Justification::centredLeft, 1);
+
+    // Trash (right of name) — visible only on row hover. Factory: 30% no pointer events.
+    paintTrashIcon (g, trashBounds (rowI), factory, rowHov, hoverDelPmIdx_ == pi);
+
+    // USER badge.
+    if (! factory)
+    {
+        const float bw = 34.0f, bh = 16.0f;
+        const float bx = row.getRight() - bw - 12.0f;
+        const float by = row.getCentreY() - bh * 0.5f;
+        g.setColour (juce::Colour (kAccentArgb).withAlpha (0.20f));
+        g.fillRoundedRectangle (bx, by, bw, bh, 3.0f);
+        g.setColour (juce::Colour (kAccentArgb).withAlpha (0.70f));
+        g.setFont (juce::FontOptions (8.5f, juce::Font::bold));
+        g.drawFittedText ("USER", (int) bx, (int) by, (int) bw, (int) bh,
+                          juce::Justification::centred, 1);
+    }
+}
+
+// "Delete '<name>'?" red strip with [Cancel] [Delete] buttons.
+void PresetPanel::paintConfirmStrip (juce::Graphics& g, juce::Rectangle<int> rowB,
+                                     const juce::String& presetName) const
+{
+    using LF = manifold::ui::ManifoldLookAndFeel;
+    constexpr juce::uint32 kDangerArgb = 0xffdc6347;
+
+    // Trash glyph (small) + uppercase prompt on the left.
+    const int gx = rowB.getX() + 18;
+    const int gy = rowB.getCentreY() - 5;
+    juce::Path tp;
+    tp.startNewSubPath ((float) gx,        (float) gy + 1);
+    tp.lineTo          ((float) gx + 10,   (float) gy + 1);
+    tp.startNewSubPath ((float) gx + 1,    (float) gy + 1);
+    tp.lineTo          ((float) gx + 1.5f, (float) gy + 9);
+    tp.lineTo          ((float) gx + 8.5f, (float) gy + 9);
+    tp.lineTo          ((float) gx + 9,    (float) gy + 1);
+    g.setColour (juce::Colour (kDangerArgb));
+    g.strokePath (tp, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved,
+                                             juce::PathStrokeType::rounded));
+
+    g.setColour (juce::Colour (kDangerArgb).brighter (0.30f));
+    g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
+    g.drawFittedText ("DELETE",
+                      gx + 18, rowB.getCentreY() - 8, 70, 16,
+                      juce::Justification::centredLeft, 1);
+
+    g.setColour (LF::ink1());
+    g.setFont (juce::FontOptions (12.5f, juce::Font::plain));
+    g.drawFittedText ("\"" + presetName + "\"?",
+                      gx + 70, rowB.getCentreY() - 8,
+                      confirmCancelBounds (rowB).getX() - (gx + 70) - 8, 16,
+                      juce::Justification::centredLeft, 1);
+
+    // [Cancel] — ghost.
+    {
+        const auto cb = confirmCancelBounds (rowB).toFloat();
+        const bool h  = (hoverConfirmBtn_ == 1);
+        g.setColour (h ? LF::ink2().withAlpha (0.10f) : juce::Colours::transparentBlack);
+        g.fillRoundedRectangle (cb, 4.0f);
+        g.setColour (h ? LF::ink2() : LF::ink3());
+        g.drawRoundedRectangle (cb.reduced (0.5f), 4.0f, 1.0f);
+        g.setColour (h ? LF::ink1() : LF::ink2());
+        g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
+        g.drawFittedText ("CANCEL", confirmCancelBounds (rowB),
+                          juce::Justification::centred, 1);
+    }
+    // [Delete] — red filled.
+    {
+        const auto db = confirmDeleteBounds (rowB).toFloat();
+        const bool h  = (hoverConfirmBtn_ == 2);
+        const auto base = juce::Colour (kDangerArgb);
+        g.setColour (h ? base.brighter (0.15f) : base);
+        g.fillRoundedRectangle (db, 4.0f);
+        g.setColour (base.brighter (0.25f));
+        g.drawRoundedRectangle (db.reduced (0.5f), 4.0f, 1.0f);
+        g.setColour (juce::Colours::white);
+        g.setFont (juce::FontOptions (9.5f, juce::Font::bold));
+        g.drawFittedText ("DELETE", confirmDeleteBounds (rowB),
+                          juce::Justification::centred, 1);
+    }
+}
+
+// Filled gold star when favorited; outlined ghost when not. Subtle scale on hover.
+void PresetPanel::paintStar (juce::Graphics& g, juce::Rectangle<int> bounds,
+                             bool isFavorite, bool hovered) const
+{
+    constexpr juce::uint32 kStarArgb     = 0xfff5c95f;   // warm gold (filled)
+    constexpr juce::uint32 kStarHoverArgb = 0xffffd47a;
+    constexpr juce::uint32 kGhostArgb     = 0xff5a6068;  // dim slate
+
+    const float scale = hovered ? 1.10f : 1.0f;
+    const float cx = (float) bounds.getCentreX();
+    const float cy = (float) bounds.getCentreY();
+    const float s  = 6.5f * scale;   // half-size of the 13×13 design viewBox
+
+    // 5-point star path (matches the SVG in the artboard, scaled).
+    auto pt = [&] (float x, float y) {
+        return juce::Point<float> (cx + (x - 6.5f) * scale, cy + (y - 6.5f) * scale);
+    };
+    juce::Path star;
+    star.startNewSubPath (pt (6.5f, 1.2f));
+    star.lineTo          (pt (8.1f, 4.6f));
+    star.lineTo          (pt (11.7f, 5.1f));
+    star.lineTo          (pt (9.1f, 7.7f));
+    star.lineTo          (pt (9.7f, 11.3f));
+    star.lineTo          (pt (6.5f, 9.6f));
+    star.lineTo          (pt (3.3f, 11.3f));
+    star.lineTo          (pt (3.9f, 7.7f));
+    star.lineTo          (pt (1.3f, 5.1f));
+    star.lineTo          (pt (4.9f, 4.6f));
+    star.closeSubPath();
+
+    if (isFavorite)
+    {
+        const auto col = juce::Colour (hovered ? kStarHoverArgb : kStarArgb);
+        // Soft glow.
+        g.setColour (col.withAlpha (0.35f));
+        g.fillEllipse (cx - s, cy - s, s * 2.0f, s * 2.0f);
+        g.setColour (col);
+        g.fillPath (star);
+    }
+    else
+    {
+        g.setColour (juce::Colour (hovered ? kStarArgb : kGhostArgb));
+        g.strokePath (star, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved,
+                                                   juce::PathStrokeType::rounded));
+    }
+}
+
+// Trash bin glyph drawn into bounds. Visible only when the row is hovered.
+// Factory presets render at 30% opacity (visible affordance, but disabled).
+void PresetPanel::paintTrashIcon (juce::Graphics& g, juce::Rectangle<int> bounds,
+                                  bool isFactory, bool rowHovered, bool iconHovered) const
+{
+    if (! rowHovered) return;   // hidden by default
+
+    constexpr juce::uint32 kDangerArgb = 0xffdc6347;
+    using LF = manifold::ui::ManifoldLookAndFeel;
+
+    const float a = isFactory ? 0.30f : 1.0f;
+    const auto  base = isFactory ? LF::ink3()
+                                 : (iconHovered ? juce::Colour (kDangerArgb) : LF::ink2());
+
+    // Hover background (only for active user-preset trash).
+    if (! isFactory && iconHovered)
+    {
+        g.setColour (juce::Colour (kDangerArgb).withAlpha (0.18f));
+        g.fillRoundedRectangle (bounds.toFloat(), 4.0f);
+        g.setColour (juce::Colour (kDangerArgb).withAlpha (0.40f));
+        g.drawRoundedRectangle (bounds.toFloat().reduced (0.5f), 4.0f, 1.0f);
+    }
+
+    g.setColour (base.withAlpha (a));
+
+    // 12×12 design viewBox, centered in bounds.
+    const float cx = (float) bounds.getCentreX();
+    const float cy = (float) bounds.getCentreY();
+    auto p = [&] (float x, float y) {
+        return juce::Point<float> (cx + (x - 6.0f), cy + (y - 6.0f));
+    };
+    juce::Path bin;
+    // Top horizontal line
+    bin.startNewSubPath (p (2.0f,  3.0f));
+    bin.lineTo          (p (10.0f, 3.0f));
+    // Bin body
+    bin.startNewSubPath (p (3.0f,  3.0f));
+    bin.lineTo          (p (3.5f,  10.0f));
+    bin.lineTo          (p (8.5f,  10.0f));
+    bin.lineTo          (p (9.0f,  3.0f));
+    // Tick marks
+    bin.startNewSubPath (p (5.0f,  5.0f));
+    bin.lineTo          (p (5.0f,  8.0f));
+    bin.startNewSubPath (p (7.0f,  5.0f));
+    bin.lineTo          (p (7.0f,  8.0f));
+    // Lid handle
+    bin.startNewSubPath (p (4.5f,  3.0f));
+    bin.lineTo          (p (4.5f,  1.5f));
+    bin.lineTo          (p (7.5f,  1.5f));
+    bin.lineTo          (p (7.5f,  3.0f));
+    g.strokePath (bin, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved,
+                                              juce::PathStrokeType::rounded));
+}
+
+// "★ FAVORITES" / "ALL PRESETS" small uppercase label with a trailing hairline.
+void PresetPanel::paintSectionDivider (juce::Graphics& g, juce::Rectangle<int> bounds,
+                                       const juce::String& label, bool isFavoritesStyle) const
+{
+    using LF = manifold::ui::ManifoldLookAndFeel;
+    constexpr juce::uint32 kStarArgb = 0xfff5c95f;
+
+    g.setColour (isFavoritesStyle ? juce::Colour (kStarArgb) : LF::ink4());
+    g.setFont (juce::FontOptions (8.5f, juce::Font::bold));
+    const auto txtRect = bounds.reduced (16, 0).withTrimmedTop (8);
+
+    // Measure label width to anchor the hairline.
+    juce::GlyphArrangement ga;
+    ga.addLineOfText (g.getCurrentFont(), label, 0.0f, 0.0f);
+    const float labelW = ga.getBoundingBox (0, ga.getNumGlyphs(), true).getWidth() + 8.0f;
+
+    g.drawFittedText (label, txtRect, juce::Justification::centredLeft, 1);
+
+    // Trailing hairline that fades to transparent.
+    const float lineY = (float) bounds.getCentreY() + 4.0f;
+    juce::ColourGradient lg (LF::plateLine(),                  txtRect.getX() + labelW,    lineY,
+                              juce::Colours::transparentBlack, (float) bounds.getRight(),  lineY,
+                              false);
+    g.setGradientFill (lg);
+    g.fillRect (juce::Rectangle<float> (txtRect.getX() + labelW, lineY,
+                                         (float) bounds.getRight() - txtRect.getX() - labelW - 12.0f,
+                                         1.0f));
+}
+
+// Gold-tinted "Showing N favorites across all categories" pill.
+void PresetPanel::paintFilterBanner (juce::Graphics& g, juce::Rectangle<int> bounds, int favCount) const
+{
+    using LF = manifold::ui::ManifoldLookAndFeel;
+    constexpr juce::uint32 kStarArgb = 0xfff5c95f;
+
+    const auto pill = bounds.reduced (10, 6).toFloat();
+    g.setColour (juce::Colour (kStarArgb).withAlpha (0.10f));
+    g.fillRoundedRectangle (pill, 5.0f);
+    g.setColour (juce::Colour (kStarArgb).withAlpha (0.30f));
+    g.drawRoundedRectangle (pill.reduced (0.5f), 5.0f, 1.0f);
+
+    // Star glyph at left.
+    {
+        const float cx = pill.getX() + 14.0f;
+        const float cy = pill.getCentreY();
+        auto pt = [&] (float x, float y) {
+            return juce::Point<float> (cx + (x - 6.5f) * 0.8f, cy + (y - 6.5f) * 0.8f);
+        };
+        juce::Path star;
+        star.startNewSubPath (pt (6.5f, 1.2f));
+        star.lineTo (pt (8.1f, 4.6f));   star.lineTo (pt (11.7f, 5.1f));
+        star.lineTo (pt (9.1f, 7.7f));   star.lineTo (pt (9.7f, 11.3f));
+        star.lineTo (pt (6.5f, 9.6f));   star.lineTo (pt (3.3f, 11.3f));
+        star.lineTo (pt (3.9f, 7.7f));   star.lineTo (pt (1.3f, 5.1f));
+        star.lineTo (pt (4.9f, 4.6f));   star.closeSubPath();
+        g.setColour (juce::Colour (kStarArgb));
+        g.fillPath (star);
+    }
+
+    g.setColour (juce::Colour (kStarArgb).brighter (0.20f));
+    g.setFont (juce::FontOptions (9.0f, juce::Font::bold));
+    const juce::String msg = "SHOWING " + juce::String (favCount)
+                              + " FAVORITE" + (favCount == 1 ? "" : "S");
+    g.drawFittedText (msg, (int) pill.getX() + 26, (int) pill.getY(),
+                      (int) pill.getWidth() - 26, (int) pill.getHeight(),
+                      juce::Justification::centredLeft, 1);
+
+    g.setColour (LF::ink4());
+    g.setFont (juce::FontOptions (8.0f));
+    g.drawFittedText ("ACROSS ALL CATEGORIES",
+                      (int) pill.getX(), (int) pill.getY(),
+                      (int) pill.getWidth() - 12, (int) pill.getHeight(),
+                      juce::Justification::centredRight, 1);
+
+    juce::ignoreUnused (favCount);
 }
 
 // ─── Save form ───────────────────────────────────────────────────────────────
@@ -633,6 +1048,28 @@ void PresetPanel::paintCollision (juce::Graphics& g) const
 // ─────────────────────────────────────────────────────────────────────────────
 // Interaction
 // ─────────────────────────────────────────────────────────────────────────────
+// Resolve the LayoutItem under (x, y) in panel coords, or nullptr-equivalent.
+// Returns true if found; out_item / out_row populated.
+static bool hitTestItem (const std::vector<PresetPanel::LayoutItem>& items,
+                         int yTopOfList, int scrollY, int panelWidth,
+                         int mouseX, int mouseY,
+                         PresetPanel::LayoutItem& outItem,
+                         juce::Rectangle<int>& outRow)
+{
+    juce::ignoreUnused (mouseX);
+    for (const auto& it : items)
+    {
+        const int top = yTopOfList + it.yTop - scrollY;
+        if (mouseY >= top && mouseY < top + it.height)
+        {
+            outItem = it;
+            outRow  = { 0, top, panelWidth, it.height };
+            return true;
+        }
+    }
+    return false;
+}
+
 void PresetPanel::mouseDown (const juce::MouseEvent& e)
 {
     // Close X (right 44 px of header) — all states.
@@ -651,7 +1088,15 @@ void PresetPanel::mouseDown (const juce::MouseEvent& e)
             const int n  = categories().size();
             const int w  = getWidth() / n;
             const int ti = juce::jlimit (0, n - 1, e.x / juce::jmax (1, w));
-            if (ti != selectedCat_) { selectedCat_ = ti; scrollOffset_ = 0; hoverRowIdx_ = -1; repaint(); }
+            if (ti != selectedCat_)
+            {
+                selectedCat_         = ti;
+                scrollOffset_        = 0;
+                hoverRowPmIdx_       = -1;
+                confirmingDelPmIdx_  = -1;
+                hoverConfirmBtn_     = 0;
+                repaint();
+            }
             return;
         }
 
@@ -662,14 +1107,67 @@ void PresetPanel::mouseDown (const juce::MouseEvent& e)
             return;
         }
 
-        // Preset row.
-        const auto indices = filteredIndices();
-        const int  fi      = (e.y - listAreaTop() + scrollOffset_) / kRowH;
-        if (fi >= 0 && fi < (int) indices.size())
+        // Resolve which item is under the cursor.
+        const auto items = computeLayout();
+        LayoutItem item;
+        juce::Rectangle<int> rowB;
+        if (! hitTestItem (items, listAreaTop(), scrollOffset_, getWidth(),
+                           e.x, e.y, item, rowB))
         {
-            pm_.load (indices[(size_t) fi]);
-            hide();
+            // Click in empty list area — cancel any pending confirm.
+            if (confirmingDelPmIdx_ != -1)
+            {
+                confirmingDelPmIdx_ = -1; hoverConfirmBtn_ = 0; repaint();
+            }
+            return;
         }
+
+        // Only preset rows respond to clicks; dividers and the banner are inert.
+        if (item.kind != LayoutItem::Kind::Preset) return;
+        const int pi = item.presetIdx;
+
+        // ── If this row is in confirm state, handle Cancel / Delete buttons.
+        if (pi == confirmingDelPmIdx_)
+        {
+            if (confirmCancelBounds (rowB).contains (e.x, e.y))
+            {
+                confirmingDelPmIdx_ = -1; hoverConfirmBtn_ = 0; repaint();
+                return;
+            }
+            if (confirmDeleteBounds (rowB).contains (e.x, e.y))
+            {
+                const int target = confirmingDelPmIdx_;
+                confirmingDelPmIdx_ = -1; hoverConfirmBtn_ = 0;
+                pm_.deleteUserPreset (target);   // fires onPresetDeleted → repaint via editor
+                return;
+            }
+            // Click elsewhere on the confirming row is ignored (don't accidentally load).
+            return;
+        }
+
+        // ── Star → toggle favorite.
+        if (starBounds (rowB).contains (e.x, e.y))
+        {
+            pm_.toggleFavorite (pi);
+            // If we were in "All" view, sort may have changed — recompute layout next paint.
+            return;
+        }
+
+        // ── Trash → enter confirm (user presets only).
+        if (trashBounds (rowB).contains (e.x, e.y) && pm_.isUserPreset (pi))
+        {
+            // Cancel any other open confirm before opening this one.
+            confirmingDelPmIdx_ = pi;
+            hoverConfirmBtn_    = 0;
+            repaint();
+            return;
+        }
+
+        // Click on row body → load and close.
+        // Cancel any unrelated open confirm before loading.
+        if (confirmingDelPmIdx_ != -1) confirmingDelPmIdx_ = -1;
+        pm_.load (pi);
+        hide();
         return;
     }
 
@@ -713,12 +1211,36 @@ void PresetPanel::mouseMove (const juce::MouseEvent& e)
 {
     if (state_ != State::Browse) return;
 
-    int newRow = -1, newTab = -1;
+    int newRowPm  = -1;
+    int newFavPm  = -1;
+    int newDelPm  = -1;
+    int newTab    = -1;
+    int newCfBtn  = 0;
+
     if (e.y >= listAreaTop())
     {
-        const auto indices = filteredIndices();
-        const int  fi      = (e.y - listAreaTop() + scrollOffset_) / kRowH;
-        if (fi >= 0 && fi < (int) indices.size()) newRow = fi;
+        const auto items = computeLayout();
+        LayoutItem item;
+        juce::Rectangle<int> rowB;
+        if (hitTestItem (items, listAreaTop(), scrollOffset_, getWidth(),
+                         e.x, e.y, item, rowB)
+            && item.kind == LayoutItem::Kind::Preset)
+        {
+            const int pi = item.presetIdx;
+            newRowPm = pi;
+
+            if (pi == confirmingDelPmIdx_)
+            {
+                if (confirmCancelBounds (rowB).contains (e.x, e.y)) newCfBtn = 1;
+                else if (confirmDeleteBounds (rowB).contains (e.x, e.y)) newCfBtn = 2;
+            }
+            else
+            {
+                if (starBounds (rowB).contains (e.x, e.y))           newFavPm = pi;
+                if (trashBounds (rowB).contains (e.x, e.y) && pm_.isUserPreset (pi))
+                    newDelPm = pi;
+            }
+        }
     }
     else if (e.y >= kHeaderH)
     {
@@ -726,17 +1248,28 @@ void PresetPanel::mouseMove (const juce::MouseEvent& e)
         newTab = juce::jlimit (0, n - 1, e.x / juce::jmax (1, getWidth() / n));
     }
 
-    if (newRow != hoverRowIdx_ || newTab != hoverTabIdx_)
+    if (newRowPm != hoverRowPmIdx_ || newTab != hoverTabIdx_
+        || newFavPm != hoverFavPmIdx_ || newDelPm != hoverDelPmIdx_
+        || newCfBtn != hoverConfirmBtn_)
     {
-        hoverRowIdx_ = newRow; hoverTabIdx_ = newTab; repaint();
+        hoverRowPmIdx_   = newRowPm;
+        hoverTabIdx_     = newTab;
+        hoverFavPmIdx_   = newFavPm;
+        hoverDelPmIdx_   = newDelPm;
+        hoverConfirmBtn_ = newCfBtn;
+        repaint();
     }
 }
 
 void PresetPanel::mouseExit (const juce::MouseEvent&)
 {
-    if (hoverRowIdx_ != -1 || hoverTabIdx_ != -1)
+    if (hoverRowPmIdx_ != -1 || hoverTabIdx_ != -1
+        || hoverFavPmIdx_ != -1 || hoverDelPmIdx_ != -1
+        || hoverConfirmBtn_ != 0)
     {
-        hoverRowIdx_ = hoverTabIdx_ = -1; repaint();
+        hoverRowPmIdx_ = hoverTabIdx_ = hoverFavPmIdx_ = hoverDelPmIdx_ = -1;
+        hoverConfirmBtn_ = 0;
+        repaint();
     }
 }
 
