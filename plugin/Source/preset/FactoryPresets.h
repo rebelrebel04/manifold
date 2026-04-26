@@ -29,6 +29,11 @@ namespace manifold::preset
 //   chaos*      0/1 per engine
 struct FactoryPreset
 {
+    // Stable kebab-case slug — the canonical identity of this preset.
+    // Used by PresetManager::getStableId for favorites and any future
+    // ref-by-identity needs. Renaming `name` is safe; renaming `id`
+    // breaks favorites and is a one-way migration.
+    juce::String id;
     juce::String name;
     juce::String category;
     juce::String primaryEngine;   // descriptive — first active engine, displayed in metadata
@@ -51,7 +56,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 1. Resin Drop — baseline Lorenz wobble, the friendly default.
         {
-            "Resin Drop", "Wobble", "Lorenz",
+            "resin-drop", "Resin Drop", "Wobble", "Lorenz",
             {
                 { "intensity",     0.55f  }, { "speed",         0.35f  }, { "warmth",        0.20f  },
                 { "drive",         2.0f   }, { "cutoff",        400.0f }, { "resonance",     0.45f  },
@@ -68,7 +73,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 2. Slow Tumble — lazy Rossler roll, warm and bus-friendly.
         {
-            "Slow Tumble", "Wobble", "Rossler",
+            "slow-tumble", "Slow Tumble", "Wobble", "Rossler",
             {
                 { "intensity",     0.45f  }, { "speed",         0.30f  }, { "warmth",        0.45f  },
                 { "drive",         1.6f   }, { "cutoff",        350.0f }, { "resonance",     0.50f  },
@@ -85,7 +90,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 3. Period-4 — Chua near-periodic jitter, low-drive subtle wobble.
         {
-            "Period-4", "Wobble", "Chua",
+            "period-4", "Period-4", "Wobble", "Chua",
             {
                 { "intensity",     0.30f  }, { "speed",         0.25f  }, { "warmth",        0.45f  },
                 { "drive",         1.3f   }, { "cutoff",        200.0f }, { "resonance",     0.30f  },
@@ -102,7 +107,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 4. Tide Cycle — Lorenz+Aizawa drift, two-engine gentle motion.
         {
-            "Tide Cycle", "Wobble", "Lorenz",
+            "tide-cycle", "Tide Cycle", "Wobble", "Lorenz",
             {
                 { "intensity",     0.50f  }, { "speed",         0.40f  }, { "warmth",        0.30f  },
                 { "drive",         1.8f   }, { "cutoff",        480.0f }, { "resonance",     0.55f  },
@@ -119,7 +124,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 5. Fathom Roll — Aizawa deep, slow, dubstep half-step movement.
         {
-            "Fathom Roll", "Wobble", "Aizawa",
+            "fathom-roll", "Fathom Roll", "Wobble", "Aizawa",
             {
                 { "intensity",     0.50f  }, { "speed",         0.28f  }, { "warmth",        0.35f  },
                 { "drive",         2.2f   }, { "cutoff",        280.0f }, { "resonance",     0.55f  },
@@ -140,7 +145,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 6. Throat Lock — Henon vocal aggression, 303 bite, filter-first.
         {
-            "Throat Lock", "Growl", "Henon",
+            "throat-lock", "Throat Lock", "Growl", "Henon",
             {
                 { "intensity",     0.65f  }, { "speed",         0.50f  }, { "warmth",        0.10f  },
                 { "drive",         2.6f   }, { "cutoff",        700.0f }, { "resonance",     0.75f  },
@@ -157,7 +162,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 7. Tar Pit — Lorenz+Henon hot, sticky, slow-attack growl.
         {
-            "Tar Pit", "Growl", "Lorenz",
+            "tar-pit", "Tar Pit", "Growl", "Lorenz",
             {
                 { "intensity",     0.65f  }, { "speed",         0.42f  }, { "warmth",        0.20f  },
                 { "drive",         2.8f   }, { "cutoff",        380.0f }, { "resonance",     0.65f  },
@@ -174,7 +179,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 8. Hornet's Nest — Thomas fast buzz, hard-clip aggression, F→S.
         {
-            "Hornet's Nest", "Growl", "Thomas",
+            "hornets-nest", "Hornet's Nest", "Growl", "Thomas",
             {
                 { "intensity",     0.60f  }, { "speed",         0.65f  }, { "warmth",        0.05f  },
                 { "drive",         3.0f   }, { "cutoff",        900.0f }, { "resonance",     0.70f  },
@@ -191,7 +196,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 9. Diesel Cough — Chua choppy octave-up, broken engine vibe.
         {
-            "Diesel Cough", "Growl", "Chua",
+            "diesel-cough", "Diesel Cough", "Growl", "Chua",
             {
                 { "intensity",     0.55f  }, { "speed",         0.55f  }, { "warmth",        0.15f  },
                 { "drive",         2.4f   }, { "cutoff",        320.0f }, { "resonance",     0.60f  },
@@ -208,7 +213,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 10. Bonemeal — Henon+Rossler gritty, ChebyT5 dense harmonics.
         {
-            "Bonemeal", "Growl", "Rossler",
+            "bonemeal", "Bonemeal", "Growl", "Rossler",
             {
                 { "intensity",     0.70f  }, { "speed",         0.45f  }, { "warmth",        0.10f  },
                 { "drive",         3.2f   }, { "cutoff",        550.0f }, { "resonance",     0.65f  },
@@ -229,7 +234,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 11. Cathedral Hum — Aizawa sine drone with band-pass focus.
         {
-            "Cathedral Hum", "Drone", "Aizawa",
+            "cathedral-hum", "Cathedral Hum", "Drone", "Aizawa",
             {
                 { "intensity",     0.25f  }, { "speed",         0.18f  }, { "warmth",        0.65f  },
                 { "drive",         1.4f   }, { "cutoff",        600.0f }, { "resonance",     0.55f  },
@@ -246,7 +251,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 12. Mantle Drift — Lorenz+Aizawa ultra-slow, sub focus.
         {
-            "Mantle Drift", "Drone", "Lorenz",
+            "mantle-drift", "Mantle Drift", "Drone", "Lorenz",
             {
                 { "intensity",     0.30f  }, { "speed",         0.15f  }, { "warmth",        0.55f  },
                 { "drive",         1.5f   }, { "cutoff",        240.0f }, { "resonance",     0.40f  },
@@ -263,7 +268,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 13. Subterrain — Lorenz pure sub-bass, near-static motion.
         {
-            "Subterrain", "Drone", "Lorenz",
+            "subterrain", "Subterrain", "Drone", "Lorenz",
             {
                 { "intensity",     0.20f  }, { "speed",         0.12f  }, { "warmth",        0.70f  },
                 { "drive",         1.4f   }, { "cutoff",        180.0f }, { "resonance",     0.30f  },
@@ -280,7 +285,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 14. Vapor Spire — Rossler+Thomas higher-register breathing drone.
         {
-            "Vapor Spire", "Drone", "Thomas",
+            "vapor-spire", "Vapor Spire", "Drone", "Thomas",
             {
                 { "intensity",     0.40f  }, { "speed",         0.30f  }, { "warmth",        0.40f  },
                 { "drive",         1.7f   }, { "cutoff",        850.0f }, { "resonance",     0.55f  },
@@ -297,7 +302,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 15. Deep Carrier — Aizawa tube-warm sustained bed.
         {
-            "Deep Carrier", "Drone", "Aizawa",
+            "deep-carrier", "Deep Carrier", "Drone", "Aizawa",
             {
                 { "intensity",     0.35f  }, { "speed",         0.20f  }, { "warmth",        0.60f  },
                 { "drive",         1.8f   }, { "cutoff",        220.0f }, { "resonance",     0.40f  },
@@ -318,7 +323,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 16. Bell Harvest — Henon plucked metal partials, complex.
         {
-            "Bell Harvest", "Metal", "Henon",
+            "bell-harvest", "Bell Harvest", "Metal", "Henon",
             {
                 { "intensity",     0.65f  }, { "speed",         0.55f  }, { "warmth",        0.05f  },
                 { "drive",         2.8f   }, { "cutoff",        1200.0f}, { "resonance",     0.70f  },
@@ -335,7 +340,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 17. Anvil Stutter — Henon hammered tonal hits with chaos jitter.
         {
-            "Anvil Stutter", "Metal", "Henon",
+            "anvil-stutter", "Anvil Stutter", "Metal", "Henon",
             {
                 { "intensity",     0.60f  }, { "speed",         0.50f  }, { "warmth",        0.10f  },
                 { "drive",         2.5f   }, { "cutoff",        800.0f }, { "resonance",     0.75f  },
@@ -352,7 +357,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 18. Iron Filings — Henon+Chua complex inharmonic resonance cluster.
         {
-            "Iron Filings", "Metal", "Chua",
+            "iron-filings", "Iron Filings", "Metal", "Chua",
             {
                 { "intensity",     0.55f  }, { "speed",         0.55f  }, { "warmth",        0.10f  },
                 { "drive",         2.6f   }, { "cutoff",        1000.0f}, { "resonance",     0.80f  },
@@ -369,7 +374,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 19. Steel String — Lorenz plucked-string mid-pitch, musical.
         {
-            "Steel String", "Metal", "Lorenz",
+            "steel-string", "Steel String", "Metal", "Lorenz",
             {
                 { "intensity",     0.40f  }, { "speed",         0.40f  }, { "warmth",        0.25f  },
                 { "drive",         1.8f   }, { "cutoff",        500.0f }, { "resonance",     0.65f  },
@@ -386,7 +391,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 20. Brass Knuckles — Thomas brassy comb tone with even harmonics.
         {
-            "Brass Knuckles", "Metal", "Thomas",
+            "brass-knuckles", "Brass Knuckles", "Metal", "Thomas",
             {
                 { "intensity",     0.55f  }, { "speed",         0.45f  }, { "warmth",        0.15f  },
                 { "drive",         2.4f   }, { "cutoff",        700.0f }, { "resonance",     0.65f  },
@@ -407,7 +412,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 21. Glass Break — Henon brittle, sharp, percussive shatter.
         {
-            "Glass Break", "Glitch", "Henon",
+            "glass-break", "Glass Break", "Glitch", "Henon",
             {
                 { "intensity",     0.75f  }, { "speed",         0.60f  }, { "warmth",        0.05f  },
                 { "drive",         3.2f   }, { "cutoff",        1500.0f}, { "resonance",     0.55f  },
@@ -424,7 +429,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 22. Datamosh — Chua+Henon dense corrupted-data buzz, F→S.
         {
-            "Datamosh", "Glitch", "Chua",
+            "datamosh", "Datamosh", "Glitch", "Chua",
             {
                 { "intensity",     0.65f  }, { "speed",         0.65f  }, { "warmth",        0.05f  },
                 { "drive",         2.8f   }, { "cutoff",        1100.0f}, { "resonance",     0.65f  },
@@ -441,7 +446,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 23. Crystalline — Henon high-shelf shimmer with chaos sparkle.
         {
-            "Crystalline", "Glitch", "Henon",
+            "crystalline", "Crystalline", "Glitch", "Henon",
             {
                 { "intensity",     0.50f  }, { "speed",         0.55f  }, { "warmth",        0.10f  },
                 { "drive",         2.0f   }, { "cutoff",        1800.0f}, { "resonance",     0.60f  },
@@ -458,7 +463,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 24. Skip Frame — Henon stuttering octave-up artifact.
         {
-            "Skip Frame", "Glitch", "Henon",
+            "skip-frame", "Skip Frame", "Glitch", "Henon",
             {
                 { "intensity",     0.70f  }, { "speed",         0.70f  }, { "warmth",        0.05f  },
                 { "drive",         2.6f   }, { "cutoff",        600.0f }, { "resonance",     0.65f  },
@@ -475,7 +480,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 25. Pixel Storm — Thomas+Henon fast-moving wide harmonic chaos, F→S.
         {
-            "Pixel Storm", "Glitch", "Thomas",
+            "pixel-storm", "Pixel Storm", "Glitch", "Thomas",
             {
                 { "intensity",     0.60f  }, { "speed",         0.70f  }, { "warmth",        0.05f  },
                 { "drive",         2.8f   }, { "cutoff",        1200.0f}, { "resonance",     0.70f  },
@@ -496,7 +501,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 26. Siren Field — Lorenz sweeping formant, eerie wide.
         {
-            "Siren Field", "Alien", "Lorenz",
+            "siren-field", "Siren Field", "Alien", "Lorenz",
             {
                 { "intensity",     0.50f  }, { "speed",         0.35f  }, { "warmth",        0.30f  },
                 { "drive",         1.8f   }, { "cutoff",        800.0f }, { "resonance",     0.60f  },
@@ -513,7 +518,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 27. Xenotongue — Chua+Aizawa vowel-shifting otherworldly speech.
         {
-            "Xenotongue", "Alien", "Chua",
+            "xenotongue", "Xenotongue", "Alien", "Chua",
             {
                 { "intensity",     0.50f  }, { "speed",         0.40f  }, { "warmth",        0.30f  },
                 { "drive",         2.2f   }, { "cutoff",        650.0f }, { "resonance",     0.70f  },
@@ -530,7 +535,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 28. Nebula Shift — Lorenz+Thomas+Rossler 3-engine evolving cosmos pad.
         {
-            "Nebula Shift", "Alien", "Lorenz",
+            "nebula-shift", "Nebula Shift", "Alien", "Lorenz",
             {
                 { "intensity",     0.45f  }, { "speed",         0.30f  }, { "warmth",        0.45f  },
                 { "drive",         1.7f   }, { "cutoff",        500.0f }, { "resonance",     0.50f  },
@@ -547,7 +552,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 29. Probe Echo — Thomas pulsing comb ping, spacecraft beacon.
         {
-            "Probe Echo", "Alien", "Thomas",
+            "probe-echo", "Probe Echo", "Alien", "Thomas",
             {
                 { "intensity",     0.45f  }, { "speed",         0.35f  }, { "warmth",        0.25f  },
                 { "drive",         1.6f   }, { "cutoff",        720.0f }, { "resonance",     0.70f  },
@@ -564,7 +569,7 @@ inline const std::vector<FactoryPreset>& getFactoryPresets()
 
         // 30. Inversion Layer — Lorenz+Chua filter-first reversal, saturating sweeps.
         {
-            "Inversion Layer", "Alien", "Lorenz",
+            "inversion-layer", "Inversion Layer", "Alien", "Lorenz",
             {
                 { "intensity",     0.45f  }, { "speed",         0.40f  }, { "warmth",        0.25f  },
                 { "drive",         2.0f   }, { "cutoff",        580.0f }, { "resonance",     0.65f  },

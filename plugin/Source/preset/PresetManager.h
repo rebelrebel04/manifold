@@ -36,6 +36,13 @@ public:
     // True for user-saved presets (idx >= factoryCount_).
     bool         isUserPreset     (int idx) const noexcept;
 
+    // Stable identifier for this preset across renames / restarts.
+    //   "factory:<slug>"  for compiled-in presets (slug is FactoryPreset::id)
+    //   "user:<name>"     for user-saved presets
+    // Used as the canonical key for favorites and any other ref-by-identity
+    // feature. Empty string for invalid indices.
+    juce::String getStableId      (int idx) const;
+
     int  getCurrentIndex() const noexcept { return currentIndex_; }
     void load (int idx);
     void next();

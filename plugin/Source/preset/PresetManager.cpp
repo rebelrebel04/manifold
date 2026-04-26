@@ -79,6 +79,14 @@ bool PresetManager::isUserPreset (int idx) const noexcept
     return idx >= factoryCount_ && idx < getCount();
 }
 
+juce::String PresetManager::getStableId (int idx) const
+{
+    if (idx < 0 || idx >= getCount()) return {};
+    if (idx < factoryCount_)
+        return "factory:" + getFactoryPresets()[(size_t) idx].id;
+    return "user:" + getName (idx);
+}
+
 // ─── Navigation ───────────────────────────────────────────────────────────────
 
 void PresetManager::load (int idx)
