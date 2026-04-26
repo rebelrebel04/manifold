@@ -8,6 +8,7 @@
 #include "ui/ManifoldWordmark.h"
 #include "ui/EngineButton.h"
 #include "ui/PickerDrawer.h"
+#include "ui/PresetPanel.h"
 
 class ManifoldEditor : public juce::AudioProcessorEditor
 {
@@ -55,6 +56,23 @@ private:
         void paintButton (juce::Graphics&, bool isMouseOver, bool isButtonDown) override;
     };
 
+    // Header preset row — Phase 8a: browse + prev + name + next, no save button.
+    // Browse opens a juce::PopupMenu listing factory presets; prev/next cycle
+    // with wrap. The name label is updated whenever PresetManager::onPresetLoaded
+    // fires (covers both UI-initiated loads and any future programmatic loads).
+    struct PresetRow : public juce::Component
+    {
+        explicit PresetRow (manifold::preset::PresetManager& pm);
+        void resized() override;
+        void refreshLabel();
+
+        manifold::preset::PresetManager& presetManager;
+        juce::TextButton browseBtn { "BROWSE" };
+        juce::TextButton prevBtn   { "<" };
+        juce::TextButton nextBtn   { ">" };
+        juce::Label      nameLabel;
+    };
+
     // Fullscreen dim overlay — sits on top of all children (added last) and paints a
     // translucent veil + badge when bypassed. Non-interactive so controls remain reachable.
     struct BypassOverlay : public juce::Component
@@ -91,6 +109,12 @@ private:
     PickerCard       shapePicker  { "SHAPE" };
     PickerCard       filterPicker { "FILTER" };
     std::unique_ptr<SignalPathToggle> sigPath;  // built once apvts is reachable
+
+    // Header preset row (between wordmark and bypass).
+    std::unique_ptr<PresetRow> presetRow;
+
+    // Left-side preset browse panel (Phase 8b).
+    std::unique_ptr<manifold::ui::PresetPanel> presetPanel;
 
     // Header bypass switch
     BypassButton bypassButton;
@@ -129,6 +153,7 @@ private:
     manifold::ui::PickerDrawer filterDrawer;
     void openShapeDrawer();
     void openFilterDrawer();
+    void openPresetPanel();
 
     // Global mouse watcher — detects clicks outside an open drawer and closes it.
     // Registered with addMouseListener(watcher, true) so knobs/buttons still receive

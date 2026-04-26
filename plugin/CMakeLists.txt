@@ -47,6 +47,8 @@ target_sources(Manifold PRIVATE
     Source/ui/ManifoldWordmark.cpp
     Source/ui/EngineButton.cpp
     Source/ui/PickerDrawer.cpp
+    Source/ui/PresetPanel.cpp
+    Source/preset/PresetManager.cpp
 )
 
 target_compile_definitions(Manifold PUBLIC

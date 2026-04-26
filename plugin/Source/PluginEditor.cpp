@@ -15,7 +15,7 @@ namespace
     constexpr int kSecondaryRowH = 110;
     constexpr int kFooterH       = 28;
 
-    constexpr const char* kBuildTag = "v0.15.0-dev";
+    constexpr const char* kBuildTag = "v0.16.0-dev";
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -249,6 +249,50 @@ void ManifoldEditor::SignalPathToggle::paintButton (juce::Graphics& g, bool isMo
 }
 
 // ─────────────────────────────────────────────────────────────────
+// PresetRow — Phase 8a header preset row (browse + prev + name + next).
+// ─────────────────────────────────────────────────────────────────
+ManifoldEditor::PresetRow::PresetRow (manifold::preset::PresetManager& pm)
+    : presetManager (pm)
+{
+    addAndMakeVisible (browseBtn);
+    addAndMakeVisible (prevBtn);
+    addAndMakeVisible (nameLabel);
+    addAndMakeVisible (nextBtn);
+
+    nameLabel.setJustificationType (juce::Justification::centred);
+    nameLabel.setColour (juce::Label::textColourId, manifold::ui::ManifoldLookAndFeel::ink2());
+    nameLabel.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    nameLabel.setText (presetManager.getDisplayName (presetManager.getCurrentIndex()),
+                       juce::dontSendNotification);
+
+    // Browse button click is wired from ManifoldEditor after both presetRow and
+    // presetPanel are constructed — see ManifoldEditor constructor below.
+    prevBtn.onClick = [this] { presetManager.prev(); };
+    nextBtn.onClick = [this] { presetManager.next(); };
+}
+
+void ManifoldEditor::PresetRow::refreshLabel()
+{
+    nameLabel.setText (presetManager.getDisplayName (presetManager.getCurrentIndex()),
+                       juce::dontSendNotification);
+}
+
+void ManifoldEditor::PresetRow::resized()
+{
+    auto b = getLocalBounds();
+    const int btnW   = 30;   // small chrome buttons
+    const int gap    = 4;
+
+    browseBtn.setBounds (b.removeFromLeft (54));   // wider — text label "BROWSE"
+    b.removeFromLeft (gap);
+    prevBtn.setBounds (b.removeFromLeft (btnW));
+    b.removeFromLeft (gap);
+    nextBtn.setBounds (b.removeFromRight (btnW));
+    b.removeFromRight (gap);
+    nameLabel.setBounds (b);
+}
+
+// ─────────────────────────────────────────────────────────────────
 // ManifoldEditor
 // ─────────────────────────────────────────────────────────────────
 ManifoldEditor::ManifoldEditor (ManifoldProcessor& p)
@@ -270,6 +314,23 @@ ManifoldEditor::ManifoldEditor (ManifoldProcessor& p)
 
     addAndMakeVisible (shapePicker);
     addAndMakeVisible (filterPicker);
+
+    // Header preset row + preset panel — both need the PresetManager.
+    presetRow   = std::make_unique<PresetRow> (processor.getPresetManager());
+    presetPanel = std::make_unique<manifold::ui::PresetPanel> (processor.getPresetManager());
+    addAndMakeVisible (*presetRow);
+
+    // Wire browseBtn here (not in PresetRow ctor) so it can reference the panel.
+    presetRow->browseBtn.onClick = [this] { openPresetPanel(); };
+
+    // Single onPresetLoaded callback covers both the header label and panel repaint.
+    processor.getPresetManager().onPresetLoaded = [this]
+    {
+        presetRow->refreshLabel();
+        if (presetPanel && presetPanel->isVisible())
+            presetPanel->repaint();
+    };
+
     addAndMakeVisible (bypassButton);
     bypassButton.setTooltip ("Master bypass - when active, the input is passed through dry (no DSP).");
 
@@ -368,7 +429,10 @@ ManifoldEditor::ManifoldEditor (ManifoldProcessor& p)
     sigPath = std::make_unique<SignalPathToggle> (apvts);
     addAndMakeVisible (*sigPath);
 
-    // Shape + Filter drawers — added before bypass overlay so the overlay remains topmost.
+    // Preset panel (left-side) + shape/filter drawers (right-side). All three are
+    // mutually exclusive — openPresetPanel / openShapeDrawer / openFilterDrawer
+    // each close the other two before opening.
+    addChildComponent (*presetPanel);
     addChildComponent (shapeDrawer);
     addChildComponent (filterDrawer);
     shapePicker.onClick  = [this] { openShapeDrawer(); };
@@ -399,6 +463,10 @@ void ManifoldEditor::DrawerMouseWatcher::mouseDown (const juce::MouseEvent& e)
 
     if (editor.filterDrawer.isVisible() && ! editor.filterDrawer.getBounds().contains (pos))
         editor.filterDrawer.hide();
+
+    if (editor.presetPanel && editor.presetPanel->isVisible()
+        && ! editor.presetPanel->getBounds().contains (pos))
+        editor.presetPanel->hide();
 }
 
 void ManifoldEditor::updateBlendEnabled()
@@ -422,6 +490,10 @@ void ManifoldEditor::openShapeDrawer()
 {
     // Toggle: clicking the same button while open closes the drawer.
     if (shapeDrawer.isVisible()) { shapeDrawer.hide(); return; }
+
+    // Mutually exclusive with the left panel and filter drawer.
+    if (presetPanel && presetPanel->isVisible()) presetPanel->hide();
+    if (filterDrawer.isVisible())                filterDrawer.hide();
 
     using ST  = manifold::params::ShaperType;
     using Opt = manifold::ui::PickerDrawer::Option;
@@ -482,10 +554,14 @@ void ManifoldEditor::openShapeDrawer()
         },
         currentIdx);
 
+    // Restore full portrait bounds before re-narrowing (handles switch from panel).
+    resized();
     portrait.setBounds (portrait.getBounds().withRight (shapeDrawer.getX()));
-    // Only restore portrait when both drawers are closed (handles the case where
-    // the user switches directly from shape drawer to filter drawer).
-    shapeDrawer.onHide = [this] { if (! filterDrawer.isVisible()) resized(); };
+    shapeDrawer.onHide = [this]
+    {
+        if (! filterDrawer.isVisible() && (! presetPanel || ! presetPanel->isVisible()))
+            resized();
+    };
     shapeDrawer.show();
 }
 
@@ -493,6 +569,10 @@ void ManifoldEditor::openFilterDrawer()
 {
     // Toggle: clicking the same button while open closes the drawer.
     if (filterDrawer.isVisible()) { filterDrawer.hide(); return; }
+
+    // Mutually exclusive with the left panel and shape drawer.
+    if (presetPanel && presetPanel->isVisible()) presetPanel->hide();
+    if (shapeDrawer.isVisible())                 shapeDrawer.hide();
 
     using FT  = manifold::params::FilterType;
     using Opt = manifold::ui::PickerDrawer::Option;
@@ -552,9 +632,37 @@ void ManifoldEditor::openFilterDrawer()
     // then only covers the left portion, the drawer occupies the right — no overlap,
     // no compositing conflict, no context teardown. resized() restores full bounds
     // once the drawer has fully animated out and hidden itself.
+    resized();
     portrait.setBounds (portrait.getBounds().withRight (filterDrawer.getX()));
-    filterDrawer.onHide = [this] { if (! shapeDrawer.isVisible()) resized(); };
+    filterDrawer.onHide = [this]
+    {
+        if (! shapeDrawer.isVisible() && (! presetPanel || ! presetPanel->isVisible()))
+            resized();
+    };
     filterDrawer.show();
+}
+
+void ManifoldEditor::openPresetPanel()
+{
+    if (! presetPanel) return;
+
+    // Toggle: clicking browse while panel is open closes it.
+    if (presetPanel->isVisible()) { presetPanel->hide(); return; }
+
+    // Mutually exclusive with the right drawers.
+    if (shapeDrawer.isVisible())  shapeDrawer.hide();
+    if (filterDrawer.isVisible()) filterDrawer.hide();
+
+    // Restore layout to full bounds before narrowing from the left.
+    resized();
+    portrait.setBounds (portrait.getBounds().withLeft (presetPanel->getRight()));
+
+    presetPanel->onHide = [this]
+    {
+        if (! shapeDrawer.isVisible() && ! filterDrawer.isVisible())
+            resized();
+    };
+    presetPanel->show();
 }
 
 void ManifoldEditor::paint (juce::Graphics& g)
@@ -608,6 +716,10 @@ void ManifoldEditor::resized()
     auto header = b.removeFromTop (kHeaderH);
     wordmark.setBounds (header.removeFromLeft (210).reduced (16, 8));
     bypassButton.setBounds (header.removeFromRight (104).reduced (12, 10));
+
+    // Preset row fills the middle of the header — between wordmark and bypass.
+    if (presetRow != nullptr)
+        presetRow->setBounds (header.reduced (12, 10));
 
     // Footer
     b.removeFromBottom (kFooterH);
@@ -667,4 +779,9 @@ void ManifoldEditor::resized()
                                              drawerW, getHeight() - kHeaderH - kFooterH);
     shapeDrawer .setBounds (drawerBounds);
     filterDrawer.setBounds (drawerBounds);
+
+    // Preset panel — left-side overlay below the header.
+    const int panelW = (getWidth() * 42) / 100;
+    if (presetPanel)
+        presetPanel->setBounds (0, kHeaderH, panelW, getHeight() - kHeaderH - kFooterH);
 }
