@@ -258,6 +258,7 @@ ManifoldEditor::PresetRow::PresetRow (manifold::preset::PresetManager& pm)
     addAndMakeVisible (prevBtn);
     addAndMakeVisible (nameLabel);
     addAndMakeVisible (nextBtn);
+    addAndMakeVisible (saveBtn);
 
     nameLabel.setJustificationType (juce::Justification::centred);
     nameLabel.setColour (juce::Label::textColourId, manifold::ui::ManifoldLookAndFeel::ink2());
@@ -287,6 +288,8 @@ void ManifoldEditor::PresetRow::resized()
     b.removeFromLeft (gap);
     prevBtn.setBounds (b.removeFromLeft (btnW));
     b.removeFromLeft (gap);
+    saveBtn.setBounds (b.removeFromRight (54));    // "SAVE" — mirrors BROWSE width
+    b.removeFromRight (gap);
     nextBtn.setBounds (b.removeFromRight (btnW));
     b.removeFromRight (gap);
     nameLabel.setBounds (b);
@@ -320,8 +323,9 @@ ManifoldEditor::ManifoldEditor (ManifoldProcessor& p)
     presetPanel = std::make_unique<manifold::ui::PresetPanel> (processor.getPresetManager());
     addAndMakeVisible (*presetRow);
 
-    // Wire browseBtn here (not in PresetRow ctor) so it can reference the panel.
+    // Wire browseBtn and saveBtn here (not in PresetRow ctor) so they can reference the panel.
     presetRow->browseBtn.onClick = [this] { openPresetPanel(); };
+    presetRow->saveBtn.onClick   = [this] { openPresetPanel (true); };
 
     // Single onPresetLoaded callback covers both the header label and panel repaint.
     processor.getPresetManager().onPresetLoaded = [this]
@@ -642,12 +646,20 @@ void ManifoldEditor::openFilterDrawer()
     filterDrawer.show();
 }
 
-void ManifoldEditor::openPresetPanel()
+void ManifoldEditor::openPresetPanel (bool saveMode)
 {
     if (! presetPanel) return;
 
-    // Toggle: clicking browse while panel is open closes it.
-    if (presetPanel->isVisible()) { presetPanel->hide(); return; }
+    // Panel already open: switch mode rather than toggling visibility.
+    // SAVE click while panel is visible → enter save form; BROWSE click → close.
+    if (presetPanel->isVisible())
+    {
+        if (saveMode)
+            presetPanel->enterSaveMode();
+        else
+            presetPanel->hide();
+        return;
+    }
 
     // Mutually exclusive with the right drawers.
     if (shapeDrawer.isVisible())  shapeDrawer.hide();
@@ -662,7 +674,7 @@ void ManifoldEditor::openPresetPanel()
         if (! shapeDrawer.isVisible() && ! filterDrawer.isVisible())
             resized();
     };
-    presetPanel->show();
+    presetPanel->show (saveMode);
 }
 
 void ManifoldEditor::paint (juce::Graphics& g)

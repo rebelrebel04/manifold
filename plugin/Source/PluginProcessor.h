@@ -13,6 +13,7 @@
 #include "dsp/DiodeLadder.h"
 #include "dsp/TunedComb.h"
 #include "dsp/TiltEQ.h"
+#include "preset/PresetManager.h"
 
 class ManifoldProcessor : public juce::AudioProcessor
 {
@@ -46,12 +47,14 @@ public:
     void setStateInformation (const void*, int) override;
 
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
+    manifold::preset::PresetManager&    getPresetManager() noexcept { return *presetManager; }
 
     // SPSC: audio thread writes via pushPortraitPoint(); GUI thread drains via popPortraitPoints().
     int popPortraitPoints (PortraitPoint* dst, int maxPoints) noexcept;
 
 private:
     juce::AudioProcessorValueTreeState apvts;
+    std::unique_ptr<manifold::preset::PresetManager> presetManager;
 
     manifold::chaos::Lorenz lorenz;
     manifold::chaos::Thomas thomas;

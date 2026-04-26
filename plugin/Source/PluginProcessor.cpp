@@ -25,6 +25,12 @@ ManifoldProcessor::ManifoldProcessor()
         .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "Manifold", manifold::params::makeLayout())
 {
+    // Build preset manager AFTER apvts is fully constructed. Construction
+    // calls load(0) which uses apvts.replaceState() — safe at this point.
+    // If the host then calls setStateInformation() with a saved DAW state,
+    // that overwrites preset 0's values; the preset row's label stays at
+    // "Wobble - Resin Drop" until the user navigates (known 8a limitation).
+    presetManager = std::make_unique<manifold::preset::PresetManager> (apvts);
 }
 
 void ManifoldProcessor::prepareToPlay (double sampleRate, int)

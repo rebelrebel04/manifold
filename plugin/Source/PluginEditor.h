@@ -70,6 +70,7 @@ private:
         juce::TextButton browseBtn { "BROWSE" };
         juce::TextButton prevBtn   { "<" };
         juce::TextButton nextBtn   { ">" };
+        juce::TextButton saveBtn   { "SAVE" };
         juce::Label      nameLabel;
     };
 
@@ -153,7 +154,7 @@ private:
     manifold::ui::PickerDrawer filterDrawer;
     void openShapeDrawer();
     void openFilterDrawer();
-    void openPresetPanel();
+    void openPresetPanel (bool saveMode = false);
 
     // Global mouse watcher — detects clicks outside an open drawer and closes it.
     // Registered with addMouseListener(watcher, true) so knobs/buttons still receive

@@ -33,7 +33,7 @@ public:
     juce::String getPrimaryEngine (int idx) const;
     // Returns "Category - Name" for the header label.
     juce::String getDisplayName   (int idx) const;
-    // Phase 8b.1 stub — always false until user-preset filesystem lands in 8b.2.
+    // True for user-saved presets (idx >= factoryCount_).
     bool         isUserPreset     (int idx) const noexcept;
 
     int  getCurrentIndex() const noexcept { return currentIndex_; }
@@ -41,15 +41,40 @@ public:
     void next();
     void prev();
 
+    // ── User-preset save API ────────────────────────────────────────────────
+    // Check whether a user preset with this name (case-insensitive) already exists.
+    bool userPresetNameExists (const juce::String& name) const;
+
+    // Write current APVTS state to disk under ~/Library/Application Support/Manifold/presets/.
+    // If overwrite=false and the file exists the call is a no-op (caller should check first).
+    void saveUserPreset (const juce::String& name,
+                         const juce::String& category,
+                         bool                overwrite);
+
+    // Snapshot of the current APVTS state for display in the save form.
+    struct StateInfo
+    {
+        juce::String primaryEngine;
+        juce::String shaperName;
+        juce::String filterName;
+    };
+    StateInfo getCurrentStateInfo() const;
+
+    // Platform preset directory: ~/Library/Application Support/Manifold/presets/
+    static juce::File getUserPresetDir();
+
     // Fired (on the message thread) after a successful load.
     std::function<void()> onPresetLoaded;
 
 private:
     juce::ValueTree buildTree (const FactoryPreset& p) const;
+    void            scanUserPresets();
 
     juce::AudioProcessorValueTreeState& apvts_;
-    std::vector<juce::ValueTree>        presetTrees_;
-    int                                 currentIndex_ = 0;
+    // Combined vector: [factory presets 0..factoryCount_-1 | user presets factoryCount_..N]
+    std::vector<juce::ValueTree> presetTrees_;
+    int                          factoryCount_  = 0;
+    int                          currentIndex_  = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PresetManager)
 };
