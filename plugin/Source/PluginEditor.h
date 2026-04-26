@@ -7,6 +7,7 @@
 #include "ui/ManifoldLookAndFeel.h"
 #include "ui/ManifoldWordmark.h"
 #include "ui/EngineButton.h"
+#include "ui/PickerDrawer.h"
 
 class ManifoldEditor : public juce::AudioProcessorEditor
 {
@@ -122,6 +123,10 @@ private:
     // BLEND knob — only meaningful when 2+ engines are active.
     LabeledKnob blendKnob { "BLEND", juce::Slider::RotaryHorizontalVerticalDrag };
     std::unique_ptr<SliderAttachment> blendAttach;
+
+    // Filter picker drawer — slides in from right, owned by editor.
+    manifold::ui::PickerDrawer filterDrawer;
+    void openFilterDrawer();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ManifoldEditor)
 };

@@ -46,6 +46,7 @@ target_sources(Manifold PRIVATE
     Source/ui/ManifoldLookAndFeel.cpp
     Source/ui/ManifoldWordmark.cpp
     Source/ui/EngineButton.cpp
+    Source/ui/PickerDrawer.cpp
 )
 
 target_compile_definitions(Manifold PUBLIC

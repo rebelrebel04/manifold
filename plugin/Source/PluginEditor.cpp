@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "Params.h"
+#include "ui/FilterDiagram.h"
 
 namespace
 {
@@ -366,6 +367,10 @@ ManifoldEditor::ManifoldEditor (ManifoldProcessor& p)
     sigPath = std::make_unique<SignalPathToggle> (apvts);
     addAndMakeVisible (*sigPath);
 
+    // Filter drawer — added before bypass overlay so the overlay remains topmost.
+    addChildComponent (filterDrawer);
+    filterPicker.onClick = [this] { openFilterDrawer(); };
+
     setSize (kEditorWidth, kEditorHeight);
 }
 
@@ -389,6 +394,71 @@ void ManifoldEditor::refreshPickerNames()
 {
     if (filterPickerAttach) filterPickerAttach->sendInitialUpdate();
     if (shaperPickerAttach) shaperPickerAttach->sendInitialUpdate();
+}
+
+void ManifoldEditor::openFilterDrawer()
+{
+    using FT  = manifold::params::FilterType;
+    using Opt = manifold::ui::PickerDrawer::Option;
+
+    // Build one Option per filter type. The drawDiagram lambda captures a FilterDiagram
+    // by value (small object) and paints it into the supplied rect each frame.
+    static const struct { FT type; const char* name; const char* desc; } kDefs[] =
+    {
+        { FT::SVF,         "SVF",          "State-variable filter. LP/BP/HP blend via MORPH. Smooth self-oscillation, musical and versatile." },
+        { FT::MoogLadder,  "Moog Ladder",  "4-pole TPT ladder. MORPH blends 4-pole to 2-pole slope. Warm low-end resonance, classic decay." },
+        { FT::DiodeLadder, "Diode Ladder", "TB-303-flavored ladder. Asymmetric feedback for a sharper, edgier resonance peak and 2nd-harmonic bite." },
+        { FT::TunedComb,   "Tuned Comb",   "Karplus-Strong resonator. CUTOFF sets pitch; MORPH controls feedback brightness. Metallic sustain." },
+    };
+
+    std::vector<Opt> options;
+    for (auto& d : kDefs)
+    {
+        Opt opt;
+        opt.name        = d.name;
+        opt.description = d.desc;
+        const FT type   = d.type;
+        opt.drawDiagram = [type] (juce::Graphics& g, juce::Rectangle<float> r)
+        {
+            // Translate g so the diagram paints into r (which is in drawer-space).
+            juce::Graphics::ScopedSaveState save (g);
+            g.setOrigin (r.getTopLeft().toInt());
+            manifold::ui::FilterDiagram diag (type);
+            diag.setBounds ({ 0, 0, (int) r.getWidth(), (int) r.getHeight() });
+            diag.paint (g);
+        };
+        options.push_back (std::move (opt));
+    }
+
+    // Current selection from param.
+    auto& apvts = processor.getAPVTS();
+    const int currentIdx = (int) apvts.getRawParameterValue (manifold::params::id::filterType)->load();
+
+    filterDrawer.configure (
+        "Filter",
+        std::move (options),
+        [this] (int idx)
+        {
+            if (auto* p = processor.getAPVTS().getParameter (manifold::params::id::filterType))
+            {
+                const float norm = p->convertTo0to1 ((float) idx);
+                p->beginChangeGesture();
+                p->setValueNotifyingHost (norm);
+                p->endChangeGesture();
+            }
+        },
+        currentIdx);
+
+    // JUCE OpenGL composites the GL surface on top of any CPU sibling within the
+    // portrait's bounds, regardless of z-order. Rather than hiding the portrait
+    // (which tears down the GL context and causes a flicker on restore), we shrink
+    // the portrait's right edge to exactly where the drawer begins. The GL surface
+    // then only covers the left portion, the drawer occupies the right — no overlap,
+    // no compositing conflict, no context teardown. resized() restores full bounds
+    // once the drawer has fully animated out and hidden itself.
+    portrait.setBounds (portrait.getBounds().withRight (filterDrawer.getX()));
+    filterDrawer.onHide = [this] { resized(); };
+    filterDrawer.show();
 }
 
 void ManifoldEditor::paint (juce::Graphics& g)
@@ -494,4 +564,9 @@ void ManifoldEditor::resized()
 
     // Overlay covers everything below the header (bypass button stays accessible).
     bypassOverlay.setBounds (getLocalBounds().withTrimmedTop (kHeaderH).withTrimmedBottom (kFooterH));
+
+    // Picker drawer: right ~46% of content area, full height below header.
+    const int drawerW = (getWidth() * 46) / 100;
+    filterDrawer.setBounds (getWidth() - drawerW, kHeaderH,
+                            drawerW, getHeight() - kHeaderH - kFooterH);
 }
