@@ -50,17 +50,20 @@ public:
     void paint          (juce::Graphics&) override;
     void resized        () override;
     void mouseDown      (const juce::MouseEvent&) override;
+    void mouseDrag      (const juce::MouseEvent&) override;
+    void mouseUp        (const juce::MouseEvent&) override;
     void mouseMove      (const juce::MouseEvent&) override;
     void mouseExit      (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
-    static constexpr int   kHeaderH   = 48;
-    static constexpr int   kCardH     = 90;
-    static constexpr int   kDiagramW  = 100;
-    static constexpr int   kCardPad   =   8;
-    static constexpr int   kScrollW   =   5;   // scroll thumb width (px)
-    static constexpr float kAnimStep  = 0.10f;  // ~10 frames -> ~160 ms at 60 fps
+    static constexpr int   kHeaderH    = 48;
+    static constexpr int   kCardH      = 90;
+    static constexpr int   kDiagramW   = 100;
+    static constexpr int   kCardPad    =   8;
+    static constexpr int   kScrollW    =   5;   // scroll thumb painted width (px)
+    static constexpr int   kScrollHitW =  16;   // scroll hit-zone width (px) — wider than thumb for easy grabbing
+    static constexpr float kAnimStep   = 0.10f; // ~10 frames -> ~160 ms at 60 fps
 
     juce::String             title_;
     std::vector<Option>      options_;
@@ -70,6 +73,11 @@ private:
 
     // Scroll state
     int  scrollOffset_ = 0;
+
+    // Thumb-drag state
+    bool isDraggingThumb_      = false;
+    int  thumbDragStartY_      = 0;
+    int  thumbDragStartOffset_ = 0;
 
     // Content / scroll geometry helpers.
     int contentHeight()   const noexcept { return (int) options_.size() * kCardH; }

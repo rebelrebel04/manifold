@@ -292,6 +292,18 @@ void PickerDrawer::mouseDown (const juce::MouseEvent& e)
         return;
     }
 
+    // Scroll thumb hit-zone takes priority over card selection.
+    // Use a generous kScrollHitW-px strip on the right edge so users don't have to
+    // precisely target the 5 px painted thumb.
+    const int ms = maxScroll();
+    if (ms > 0 && e.x >= getWidth() - kScrollHitW)
+    {
+        isDraggingThumb_      = true;
+        thumbDragStartY_      = e.y;
+        thumbDragStartOffset_ = scrollOffset_;
+        return;
+    }
+
     // Option card selection — account for scroll offset when mapping y to card index.
     const int i = (e.y - kHeaderH + scrollOffset_) / kCardH;
     if (i >= 0 && i < (int) options_.size())
@@ -302,6 +314,28 @@ void PickerDrawer::mouseDown (const juce::MouseEvent& e)
         if (onSelected_) onSelected_ (i);
         hide();
     }
+}
+
+void PickerDrawer::mouseDrag (const juce::MouseEvent& e)
+{
+    if (! isDraggingThumb_) return;
+    const int ms = maxScroll();
+    if (ms <= 0) return;
+
+    const int   availH = availableHeight();
+    const float thumbH = juce::jmax (24.0f, (float) availH * (float) availH / (float) contentHeight());
+    const float travel = (float) availH - thumbH;
+    if (travel <= 0.0f) return;
+
+    const int deltaY = e.y - thumbDragStartY_;
+    scrollOffset_ = juce::jlimit (0, ms,
+                                  thumbDragStartOffset_ + juce::roundToInt ((float) deltaY * (float) ms / travel));
+    repaint();
+}
+
+void PickerDrawer::mouseUp (const juce::MouseEvent&)
+{
+    isDraggingThumb_ = false;
 }
 
 void PickerDrawer::mouseMove (const juce::MouseEvent& e)
