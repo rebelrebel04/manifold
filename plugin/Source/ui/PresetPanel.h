@@ -91,11 +91,26 @@ private:
     juce::String collisionName_;
 
     // ── Child components (save form) ───────────────────────────────────────
+    // Custom button class for the save form / collision actions. Matches the
+    // design's two visual variants (filled accent vs. ghost outline) and adds
+    // an optional checkmark prefix for primary commits.
+    struct ActionButton : public juce::Button
+    {
+        enum class Style { Filled, Ghost };
+        ActionButton (const juce::String& label, Style s, juce::Colour accent,
+                      bool checkmarkPrefix = false);
+        void paintButton (juce::Graphics&, bool isMouseOver, bool isButtonDown) override;
+        juce::String label_;
+        Style        style_;
+        juce::Colour accent_;
+        bool         checkmark_;
+    };
+
     juce::TextEditor nameInput_;
-    juce::TextButton saveConfirmBtn { "SAVE" };
-    juce::TextButton cancelBtn      { "CANCEL" };
-    juce::TextButton overwriteBtn   { "OVERWRITE" };
-    juce::TextButton renameBtn      { "RENAME" };
+    ActionButton saveConfirmBtn;
+    ActionButton cancelBtn;
+    ActionButton overwriteBtn;
+    ActionButton renameBtn;
 
     // Animation state
     float animProgress_ = 1.0f;

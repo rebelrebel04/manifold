@@ -249,57 +249,247 @@ void ManifoldEditor::SignalPathToggle::paintButton (juce::Graphics& g, bool isMo
 }
 
 // ─────────────────────────────────────────────────────────────────
-// PresetRow — Phase 8a header preset row (browse + prev + name + next).
+// PresetRow — Phase 9 unified pill with icon buttons (matches design).
 // ─────────────────────────────────────────────────────────────────
+
+// Icon button: paints a juce::Path glyph centred in its bounds, scaled from
+// the design's source viewBox to the actual button size.
+ManifoldEditor::PresetRow::IconButton::IconButton (const juce::String& tooltip,
+                                                   juce::Path g, float sw)
+    : juce::Button (tooltip), glyph (std::move (g)), stroke (sw)
+{
+    setTooltip (tooltip);
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    // Size deduced from the path's bounding box, since each glyph in the
+    // design uses its own viewBox (14×14 burger, 10×10 chevrons, 12×12 save).
+    glyphSize = juce::jmax (glyph.getBounds().getRight(), glyph.getBounds().getBottom());
+}
+
+void ManifoldEditor::PresetRow::IconButton::paintButton (juce::Graphics& g,
+                                                          bool isMouseOver, bool isButtonDown)
+{
+    using LF = manifold::ui::ManifoldLookAndFeel;
+    const auto bounds = getLocalBounds().toFloat();
+    juce::ignoreUnused (isButtonDown);
+
+    // Hairline divider (1px wide on the LEFT of every button except the first
+    // and last — those get their dividers at the start/end of the pill instead).
+    // We paint the dividers from PresetRow::paint() so the math sees the full
+    // row; here we just render the icon.
+
+    const auto col = isMouseOver ? LF::ink1() : LF::ink2();
+    g.setColour (col);
+
+    // Centre the glyph by translating to the button centre and offsetting by
+    // half the source viewBox.
+    juce::Graphics::ScopedSaveState ss (g);
+    g.addTransform (juce::AffineTransform::translation (bounds.getCentreX() - glyphSize * 0.5f,
+                                                         bounds.getCentreY() - glyphSize * 0.5f));
+    g.strokePath (glyph, juce::PathStrokeType (stroke,
+                                                juce::PathStrokeType::curved,
+                                                juce::PathStrokeType::rounded));
+}
+
+namespace
+{
+    // ── Icon paths from manifold-frame.jsx ────────────────────────────────
+    juce::Path makeBurgerIcon()
+    {
+        juce::Path p;
+        p.startNewSubPath ( 2.0f,  4.0f); p.lineTo (12.0f,  4.0f);
+        p.startNewSubPath ( 2.0f,  7.0f); p.lineTo (12.0f,  7.0f);
+        p.startNewSubPath ( 2.0f, 10.0f); p.lineTo (12.0f, 10.0f);
+        return p;
+    }
+    juce::Path makePrevIcon()
+    {
+        juce::Path p;
+        p.startNewSubPath (6.5f, 2.0f);
+        p.lineTo          (3.0f, 5.0f);
+        p.lineTo          (6.5f, 8.0f);
+        return p;
+    }
+    juce::Path makeNextIcon()
+    {
+        juce::Path p;
+        p.startNewSubPath (3.5f, 2.0f);
+        p.lineTo          (7.0f, 5.0f);
+        p.lineTo          (3.5f, 8.0f);
+        return p;
+    }
+    juce::Path makeSaveIcon()
+    {
+        // Floppy disk: outer notched rectangle + inner label tab.
+        juce::Path p;
+        p.startNewSubPath ( 2.0f,  2.0f);
+        p.lineTo          ( 2.0f, 10.0f);
+        p.lineTo          (10.0f, 10.0f);
+        p.lineTo          (10.0f,  4.0f);
+        p.lineTo          ( 8.0f,  2.0f);
+        p.lineTo          ( 2.0f,  2.0f);
+        p.closeSubPath();
+        p.startNewSubPath ( 4.0f,  2.0f);
+        p.lineTo          ( 4.0f,  5.0f);
+        p.lineTo          ( 8.0f,  5.0f);
+        p.lineTo          ( 8.0f,  2.0f);
+        return p;
+    }
+}
+
 ManifoldEditor::PresetRow::PresetRow (manifold::preset::PresetManager& pm)
-    : presetManager (pm)
+    : presetManager (pm),
+      browseBtn ("Browse presets",         makeBurgerIcon(), 1.5f),
+      prevBtn   ("Previous preset",        makePrevIcon(),   1.5f),
+      nextBtn   ("Next preset",            makeNextIcon(),   1.5f),
+      saveBtn   ("Save current as preset", makeSaveIcon(),   1.3f)
 {
     addAndMakeVisible (browseBtn);
     addAndMakeVisible (prevBtn);
-    addAndMakeVisible (nameLabel);
     addAndMakeVisible (nextBtn);
     addAndMakeVisible (saveBtn);
 
-    nameLabel.setJustificationType (juce::Justification::centred);
-    nameLabel.setColour (juce::Label::textColourId, manifold::ui::ManifoldLookAndFeel::ink2());
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+
     refreshLabel();
 
-    // Browse button click is wired from ManifoldEditor after both presetRow and
-    // presetPanel are constructed — see ManifoldEditor constructor below.
+    // Browse / Save are wired from ManifoldEditor (they need the preset panel
+    // reference). Prev/Next are self-contained.
     prevBtn.onClick = [this] { presetManager.prev(); };
     nextBtn.onClick = [this] { presetManager.next(); };
 }
 
+void ManifoldEditor::PresetRow::mouseUp (const juce::MouseEvent& e)
+{
+    // Click on the pill body (not on a child IconButton) acts like clicking
+    // the browse icon. We fire on mouseUp — and only if the release is still
+    // within bounds — so the user can drag-out to cancel, mirroring how a
+    // standard juce::Button behaves. Firing on mouseDown would race the
+    // editor's global click-outside watcher and flicker the panel.
+    if (! getLocalBounds().contains (e.getPosition())) return;
+    if (browseBtn.onClick) browseBtn.onClick();
+}
+
 void ManifoldEditor::PresetRow::refreshLabel()
 {
-    if (presetManager.isModified())
+    isModified_ = presetManager.isModified();
+    if (isModified_)
     {
-        nameLabel.setFont (juce::FontOptions (11.0f, juce::Font::italic));
-        nameLabel.setText ("- modified -", juce::dontSendNotification);
+        categoryUpper_ = {};
+        presetName_    = "- modified -";
     }
     else
     {
-        nameLabel.setFont (juce::FontOptions (11.0f, juce::Font::bold));
-        nameLabel.setText (presetManager.getDisplayName (presetManager.getCurrentIndex()),
-                           juce::dontSendNotification);
+        const int idx = presetManager.getCurrentIndex();
+        categoryUpper_ = presetManager.getCategory (idx).toUpperCase();
+        presetName_    = presetManager.getName     (idx);
     }
+    repaint();
+}
+
+void ManifoldEditor::PresetRow::paint (juce::Graphics& g)
+{
+    using LF = manifold::ui::ManifoldLookAndFeel;
+    const auto bounds = getLocalBounds().toFloat();
+
+    // Pill container: dark plate0 fill, rounded, plateLineStrong border.
+    g.setColour (LF::plate0());
+    g.fillRoundedRectangle (bounds, 6.0f);
+
+    // Subtle inset highlight along the top edge.
+    g.setColour (LF::plateLine().withAlpha (0.30f));
+    g.drawHorizontalLine (1, bounds.getX() + 4.0f, bounds.getRight() - 4.0f);
+
+    g.setColour (LF::plateLineStrong());
+    g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 1.0f);
+
+    // Inner hairlines between sections (4 dividers — flanking each button group).
+    auto vline = [&] (float x)
+    {
+        g.setColour (LF::plateLine());
+        g.fillRect (juce::Rectangle<float> (x, bounds.getY() + 3.0f, 1.0f, bounds.getHeight() - 6.0f));
+    };
+    vline ((float) browseBtn.getRight());
+    vline ((float) prevBtn  .getRight());
+    vline ((float) nextBtn  .getX() - 1.0f);
+    vline ((float) saveBtn  .getX() - 1.0f);
+
+    // Centre name region — drawn between prevBtn.right and nextBtn.x.
+    const int nameLeft  = prevBtn.getRight() + 8;
+    const int nameRight = nextBtn.getX()    - 8;
+    if (nameRight <= nameLeft) return;
+
+    const auto nameRect = juce::Rectangle<int> (nameLeft, 0, nameRight - nameLeft, getHeight());
+
+    if (isModified_)
+    {
+        g.setColour (LF::ink2());
+        g.setFont (juce::FontOptions (11.0f, juce::Font::italic));
+        g.drawFittedText (presetName_, nameRect, juce::Justification::centred, 1);
+        return;
+    }
+
+    // "WOBBLE  ·  Resin Drop" — measure each part to centre the whole composite.
+    constexpr juce::uint32 kAccentArgb = 0xffb59cff;
+
+    const auto tagFont  = juce::FontOptions (9.0f,  juce::Font::bold);
+    const auto nameFont = juce::FontOptions (11.0f, juce::Font::plain);
+
+    juce::GlyphArrangement gaTag, gaName;
+    gaTag .addLineOfText (juce::Font (tagFont),  categoryUpper_, 0.0f, 0.0f);
+    gaName.addLineOfText (juce::Font (nameFont), presetName_,    0.0f, 0.0f);
+
+    // Approximate letter-spacing on the tag (CSS letter-spacing 0.15em ≈ 1.4px per letter).
+    const float tagW   = gaTag .getBoundingBox (0, gaTag .getNumGlyphs(), true).getWidth()
+                          + 1.4f * (float) (categoryUpper_.length() - 1);
+    const float nameW  = gaName.getBoundingBox (0, gaName.getNumGlyphs(), true).getWidth();
+    const float dotPad = 14.0f;     // total spacing for " · " incl. dot
+    const float total  = tagW + dotPad + nameW;
+
+    float x = (float) nameRect.getX() + (nameRect.getWidth() - total) * 0.5f;
+    if (x < (float) nameRect.getX()) x = (float) nameRect.getX();   // never overflow left
+
+    // Tag (uppercase mono accent).
+    g.setColour (juce::Colour (kAccentArgb));
+    g.setFont   (tagFont);
+    {
+        // Manual letter-spacing render.
+        float tx = x;
+        for (int i = 0; i < categoryUpper_.length(); ++i)
+        {
+            const auto ch = categoryUpper_.substring (i, i + 1);
+            g.drawText (ch, juce::Rectangle<float> (tx, 0.0f, 20.0f, (float) getHeight()),
+                        juce::Justification::centredLeft, false);
+            juce::GlyphArrangement gc;
+            gc.addLineOfText (juce::Font (tagFont), ch, 0.0f, 0.0f);
+            tx += gc.getBoundingBox (0, gc.getNumGlyphs(), true).getWidth() + 1.4f;
+        }
+    }
+
+    // Painted dot (avoid Unicode font-fallback risk).
+    const float dotCX = x + tagW + dotPad * 0.5f;
+    const float dotCY = (float) getHeight() * 0.5f;
+    g.setColour (LF::ink3());
+    g.fillEllipse (dotCX - 1.5f, dotCY - 1.5f, 3.0f, 3.0f);
+
+    // Name (mono ink1).
+    g.setColour (LF::ink1());
+    g.setFont   (nameFont);
+    g.drawFittedText (presetName_,
+                      juce::Rectangle<int> ((int) (x + tagW + dotPad), 0,
+                                            (int) std::ceil (nameW) + 4, getHeight()),
+                      juce::Justification::centredLeft, 1);
 }
 
 void ManifoldEditor::PresetRow::resized()
 {
     auto b = getLocalBounds();
-    const int btnW   = 30;   // small chrome buttons
-    const int gap    = 4;
+    const int btnW = 22;   // matches design — 22px wide button slots
 
-    browseBtn.setBounds (b.removeFromLeft (54));   // wider — text label "BROWSE"
-    b.removeFromLeft (gap);
-    prevBtn.setBounds (b.removeFromLeft (btnW));
-    b.removeFromLeft (gap);
-    saveBtn.setBounds (b.removeFromRight (54));    // "SAVE" — mirrors BROWSE width
-    b.removeFromRight (gap);
-    nextBtn.setBounds (b.removeFromRight (btnW));
-    b.removeFromRight (gap);
-    nameLabel.setBounds (b);
+    browseBtn.setBounds (b.removeFromLeft  (btnW));
+    prevBtn  .setBounds (b.removeFromLeft  (btnW));
+    saveBtn  .setBounds (b.removeFromRight (btnW));
+    nextBtn  .setBounds (b.removeFromRight (btnW));
+    // Centre name region is the remaining `b` — drawn in paint().
 }
 
 // ─────────────────────────────────────────────────────────────────

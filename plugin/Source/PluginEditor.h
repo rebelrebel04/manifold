@@ -56,22 +56,46 @@ private:
         void paintButton (juce::Graphics&, bool isMouseOver, bool isButtonDown) override;
     };
 
-    // Header preset row — Phase 8a: browse + prev + name + next, no save button.
-    // Browse opens a juce::PopupMenu listing factory presets; prev/next cycle
-    // with wrap. The name label is updated whenever PresetManager::onPresetLoaded
-    // fires (covers both UI-initiated loads and any future programmatic loads).
+    // Header preset row — Phase 9 visual polish version. A unified pill with
+    // four icon buttons (burger / < / > / floppy) flanking a "CATEGORY · Name"
+    // label. The whole row paints its own container; child IconButtons paint
+    // their glyph paths over it.
+    //
+    // Icons borrowed verbatim from the design source (manifold-frame.jsx).
     struct PresetRow : public juce::Component
     {
+        struct IconButton : public juce::Button
+        {
+            IconButton (const juce::String& tooltip, juce::Path glyph, float strokeWidth);
+            void paintButton (juce::Graphics&, bool isMouseOver, bool isButtonDown) override;
+            juce::Path glyph;     // in source viewBox coords (10–14 px square)
+            float      stroke;
+            float      glyphSize; // viewBox dimension (so we can centre/scale)
+        };
+
         explicit PresetRow (manifold::preset::PresetManager& pm);
-        void resized() override;
+        void resized()   override;
+        void paint       (juce::Graphics&) override;
+        // Clicking anywhere on the pill (outside the icon buttons) acts as
+        // a "browse" trigger — same effect as clicking the burger icon.
+        // We fire on mouseUp (matching JUCE Button gesture behavior) so we
+        // don't race the global DrawerMouseWatcher's mouseDown listener,
+        // which would otherwise see the panel open and immediately close it
+        // (the click position is outside the panel's bounds).
+        void mouseUp     (const juce::MouseEvent&) override;
         void refreshLabel();
 
         manifold::preset::PresetManager& presetManager;
-        juce::TextButton browseBtn { "BROWSE" };
-        juce::TextButton prevBtn   { "<" };
-        juce::TextButton nextBtn   { ">" };
-        juce::TextButton saveBtn   { "SAVE" };
-        juce::Label      nameLabel;
+        IconButton browseBtn;
+        IconButton prevBtn;
+        IconButton nextBtn;
+        IconButton saveBtn;
+
+    private:
+        // Cached display state, refreshed by refreshLabel().
+        juce::String categoryUpper_;   // e.g. "WOBBLE" — empty when modified
+        juce::String presetName_;      // e.g. "Resin Drop" or "- modified -"
+        bool         isModified_ = false;
     };
 
     // Fullscreen dim overlay — sits on top of all children (added last) and paints a

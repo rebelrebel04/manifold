@@ -8,6 +8,81 @@ namespace manifold::ui
 static constexpr juce::uint32 kAccentArgb  = 0xffb59cff;
 static constexpr juce::uint32 kAmberArgb   = 0xffffb870;   // Chua/warning hue
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ActionButton — primary/secondary save-form button (matches design CSS:
+// .btn-save filled accent w/ glow + checkmark, .btn-cancel ghost outline).
+// ─────────────────────────────────────────────────────────────────────────────
+PresetPanel::ActionButton::ActionButton (const juce::String& label, Style s,
+                                          juce::Colour accent, bool checkmark)
+    : juce::Button (label),
+      label_ (label), style_ (s), accent_ (accent), checkmark_ (checkmark)
+{
+    setMouseCursor (juce::MouseCursor::PointingHandCursor);
+}
+
+void PresetPanel::ActionButton::paintButton (juce::Graphics& g,
+                                              bool isMouseOver, bool isButtonDown)
+{
+    using LF = manifold::ui::ManifoldLookAndFeel;
+    juce::ignoreUnused (isButtonDown);
+
+    const auto bounds = getLocalBounds().toFloat();
+
+    if (style_ == Style::Filled)
+    {
+        // Soft glow (fake-blur via concentric expanded rounds at low alpha).
+        for (int i = 4; i >= 1; --i)
+        {
+            g.setColour (accent_.withAlpha (0.06f));
+            g.fillRoundedRectangle (bounds.expanded ((float) i), 5.0f + (float) i);
+        }
+        // Solid fill + subtle border.
+        const auto fill = isMouseOver ? accent_.brighter (0.12f) : accent_;
+        g.setColour (fill);
+        g.fillRoundedRectangle (bounds, 5.0f);
+        g.setColour (accent_.brighter (0.20f));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), 5.0f, 1.0f);
+        // Near-black text against the saturated accent.
+        g.setColour (juce::Colour (0xff0e0e18));
+    }
+    else   // Ghost
+    {
+        const float borderA = isMouseOver ? 0.85f : 0.45f;
+        g.setColour (accent_.withAlpha (borderA));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), 5.0f, 1.0f);
+        if (isMouseOver)
+        {
+            g.setColour (accent_.withAlpha (0.06f));
+            g.fillRoundedRectangle (bounds, 5.0f);
+        }
+        g.setColour (isMouseOver ? accent_.brighter (0.20f) : accent_);
+        juce::ignoreUnused (LF::ink2);
+    }
+
+    g.setFont (juce::FontOptions (10.0f, juce::Font::bold));
+
+    // Optional checkmark prefix (filled variants only).
+    int textL = (int) bounds.getX();
+    if (checkmark_)
+    {
+        const float cy = bounds.getCentreY();
+        const float cx = bounds.getX() + 14.0f;
+        juce::Path check;
+        check.startNewSubPath (cx - 4.0f, cy);
+        check.lineTo          (cx - 1.0f, cy + 3.0f);
+        check.lineTo          (cx + 4.0f, cy - 3.0f);
+        g.strokePath (check, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved,
+                                                    juce::PathStrokeType::rounded));
+        textL = (int) cx + 8;
+    }
+
+    g.drawFittedText (label_,
+                      juce::Rectangle<int> (textL, 0,
+                                            (int) bounds.getRight() - textL,
+                                            getHeight()),
+                      juce::Justification::centred, 1);
+}
+
 static inline float smoothStep (float t) noexcept
 {
     return t * t * (3.0f - 2.0f * t);
@@ -17,7 +92,17 @@ static inline float smoothStep (float t) noexcept
 // Construction
 // ─────────────────────────────────────────────────────────────────────────────
 PresetPanel::PresetPanel (manifold::preset::PresetManager& pm)
-    : pm_ (pm)
+    : pm_ (pm),
+      // Save form: filled-violet primary + ghost cancel.
+      saveConfirmBtn ("SAVE PRESET", ActionButton::Style::Filled,
+                      juce::Colour (kAccentArgb), /*checkmark*/ true),
+      cancelBtn      ("CANCEL",      ActionButton::Style::Ghost,
+                      juce::Colour (0xff7a8088)),   // neutral dim slate
+      // Collision: filled-amber overwrite + ghost rename.
+      overwriteBtn   ("OVERWRITE",   ActionButton::Style::Filled,
+                      juce::Colour (kAmberArgb)),
+      renameBtn      ("RENAME",      ActionButton::Style::Ghost,
+                      juce::Colour (kAmberArgb))
 {
     using LF = manifold::ui::ManifoldLookAndFeel;
 
@@ -39,22 +124,11 @@ PresetPanel::PresetPanel (manifold::preset::PresetManager& pm)
     nameInput_.setVisible (false);
     addAndMakeVisible (nameInput_);
 
-    // ── Action buttons ───────────────────────────────────────────────────────
-    // Neutral style (CANCEL, RENAME use this).
-    for (auto* btn : { &cancelBtn, &renameBtn })
+    // ── Action buttons (start hidden — visibility flipped by enter*Mode). ──
+    for (auto* b : { &saveConfirmBtn, &cancelBtn, &overwriteBtn, &renameBtn })
     {
-        btn->setColour (juce::TextButton::buttonColourId,  LF::plate3());
-        btn->setColour (juce::TextButton::textColourOffId, LF::ink2());
-        btn->setVisible (false);
-        addAndMakeVisible (*btn);
-    }
-    // Accent style (SAVE, OVERWRITE).
-    for (auto* btn : { &saveConfirmBtn, &overwriteBtn })
-    {
-        btn->setColour (juce::TextButton::buttonColourId,  juce::Colour (kAccentArgb).withAlpha (0.18f));
-        btn->setColour (juce::TextButton::textColourOffId, juce::Colour (kAccentArgb));
-        btn->setVisible (false);
-        addAndMakeVisible (*btn);
+        b->setVisible (false);
+        addAndMakeVisible (*b);
     }
 
     // Button callbacks.
@@ -388,21 +462,28 @@ void PresetPanel::resized()
     const int inputY = kHeaderH + 52;
     nameInput_.setBounds (12, inputY, getWidth() - 24, 36);
 
-    // Action button pair for save form (CANCEL | SAVE).
-    const int sfBtnY  = kHeaderH + 240;
-    const int sfBtnH  = 32;
-    const int sfBtnW  = 86;
-    const int sfGap   = 8;
-    const int rMargin = 14;
-    cancelBtn.setBounds       (getWidth() - rMargin - 2 * sfBtnW - sfGap, sfBtnY, sfBtnW, sfBtnH);
-    saveConfirmBtn.setBounds  (getWidth() - rMargin - sfBtnW,             sfBtnY, sfBtnW, sfBtnH);
+    // Action button pair for save form (CANCEL | SAVE PRESET).
+    // SAVE is wider to accommodate "SAVE PRESET" + checkmark prefix.
+    const int sfBtnY    = kHeaderH + 240;
+    const int sfBtnH    = 30;
+    const int sfCancelW = 84;
+    const int sfSaveW   = 124;
+    const int sfGap     = 8;
+    const int rMargin   = 14;
+    saveConfirmBtn.setBounds (getWidth() - rMargin - sfSaveW,
+                              sfBtnY, sfSaveW, sfBtnH);
+    cancelBtn.setBounds      (getWidth() - rMargin - sfSaveW - sfGap - sfCancelW,
+                              sfBtnY, sfCancelW, sfBtnH);
 
     // Action buttons for collision state (RENAME | OVERWRITE).
-    const int colBtnY = kHeaderH + 120;
-    const int colBtnH = 32;
-    const int colBtnW = 106;
-    renameBtn.setBounds    (getWidth() - rMargin - 2 * colBtnW - sfGap, colBtnY, colBtnW, colBtnH);
-    overwriteBtn.setBounds (getWidth() - rMargin - colBtnW,             colBtnY, colBtnW, colBtnH);
+    const int colBtnY  = kHeaderH + 120;
+    const int colBtnH  = 30;
+    const int colOvrW  = 104;
+    const int colRenW  = 92;
+    overwriteBtn.setBounds (getWidth() - rMargin - colOvrW,
+                            colBtnY, colOvrW, colBtnH);
+    renameBtn.setBounds    (getWidth() - rMargin - colOvrW - sfGap - colRenW,
+                            colBtnY, colRenW, colBtnH);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
